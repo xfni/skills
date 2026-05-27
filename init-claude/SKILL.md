@@ -120,6 +120,7 @@ description: Use when initializing Claude configuration for a new project or set
   "Bash(tree *)",
   "Bash(stat *)",
   "Bash(awk *)",
+  "Bash(sed -n *)",
   "Bash(sort *)",
   "Bash(uniq *)",
   "Bash(cut *)",
