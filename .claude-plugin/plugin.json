@@ -1,18 +1,16 @@
 {
   "name": "nixiaofeng-skills",
-  "description": "Personal Claude Code skills: commit convention, project init, unit test, coding constraints, observability",
+  "description": "Personal Claude Code skills: commit convention, project init, coding constraints, observability",
   "version": "1.0.0",
   "author": {
     "name": "nixiaofeng"
   },
   "license": "MIT",
-  "keywords": ["skills", "commit", "coding", "testing", "observability"],
+  "keywords": ["skills", "commit", "coding", "observability"],
   "skills": [
     "./git-commit-convention",
     "./init-claude",
-    "./auto-unit-test",
     "./coding-hard-constraints",
-    "./coding-observability-errors",
-    "./skill-creator"
+    "./coding-observability-errors"
   ]
 }
