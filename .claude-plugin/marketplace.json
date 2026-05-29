@@ -1,0 +1,26 @@
+{
+  "name": "nixiaofeng-skills",
+  "id": "nixiaofeng-skills",
+  "owner": {
+    "name": "nixiaofeng"
+  },
+  "plugins": [
+    {
+      "name": "nixiaofeng-skills",
+      "source": "./",
+      "description": "Personal Claude Code skills: git commit convention, project init, auto unit test, coding hard constraints, observability & error handling",
+      "version": "1.0.0",
+      "author": {
+        "name": "nixiaofeng"
+      },
+      "keywords": [
+        "skills",
+        "commit",
+        "coding",
+        "testing",
+        "observability"
+      ],
+      "category": "workflow"
+    }
+  ]
+}

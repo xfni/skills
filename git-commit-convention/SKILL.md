@@ -1,6 +1,6 @@
 ---
 name: git-commit-convention
-description: Use when about to run git commit, construct commit messages, or ask about commit scope - enforces Chinese commit format with prefix, reason, issue number, and file scope rules
+description: Use when about to run git commit, construct commit messages, or ask about commit scope - enforces Chinese commit format with prefix(ISSUE) on first line, typed body lines (feat1/fix1/...), and file scope rules
 ---
 
 # Git Commit Convention
@@ -44,23 +44,42 @@ description: Use when about to run git commit, construct commit messages, or ask
 
 ### 2. 提交信息格式（必须）
 
-```
-<前缀>: <做了什么>（中文，简洁）
+**第一行必须包含 issue 编号**，格式为 `<前缀>(<ISSUE>): <一句话总结>`。
 
-- <为什么做这个变更>（中文，说明原因/背景，一行一条）
-
-关联 #<issue号>
-```
-
-**示例：**
+正文逐条说明本次变更要点（中文，一行一条）。每行格式为 `<类型><序号>: <说明>`：
 
 ```
-feat: 新增收银员入口统计功能
+<前缀>(<ISSUE>): <一句话总结>
 
-- 收银员渠道数据在原有报表中无法单独查看，业务方需要按入口维度对比各渠道转化率。
-- 增加入口级筛选，便于业务方进行查询。
+<类型>1: <变更要点>
+<类型>2: <变更要点>
+```
 
-关联 #1024
+- `<ISSUE>`：Jira/工单编号，如 `BCS-448`（不含 `#`）
+- **第一行 `<前缀>`**：本次 commit 的主类型（通常与主要改动一致，见前缀表）
+- **正文 `<类型>`**：与该条变更的实际性质一致，使用与第一行相同的前缀关键词（`feat`、`fix`、`refactor` 等），**不限于与第一行相同**
+  - 同一类型多条：序号递增，如 `feat1`、`feat2`
+  - 不同类型可混写：例如第一行为 `feat(...)` 时，正文可同时写 `feat1:` 与 `fix1:`（feature 中夹带 bug 修复时）
+- `feat1`、`feat2` 仅为示例写法，**不是**要求正文只能写 feat 类内容
+- 每条应写清**做了什么**；若与背景强相关，可在同条内简要说明**为什么**
+- 仅一条时写对应类型即可，如 `feat1:` 或 `fix1:`
+
+**示例（纯 feature）：**
+
+```
+feat(BCS-448): ask-user 工具重构为三通道
+
+feat1: 将原单通道 ask-user 拆分为 CLI、HTTP、SDK 三通道入口
+feat2: 统一三通道的请求/响应模型，便于后续扩展
+```
+
+**示例（feature 中夹带 fix）：**
+
+```
+feat(BCS-448): ask-user 工具重构为三通道
+
+feat1: 将原单通道 ask-user 拆分为 CLI、HTTP、SDK 三通道入口
+fix1: 修复 HTTP 通道在空 body 时返回 500 的问题
 ```
 
 ### 3. 扫描关联文档（必须）
@@ -77,16 +96,17 @@ feat: 新增收银员入口统计功能
 
 ### 4. Issue 号（必须）
 
-- **每条 commit 必须关联 issue 号**
+- **每条 commit 必须在第一行标题中写明 issue 号**，格式：`<前缀>(<ISSUE>): ...`
+- **禁止**将 issue 号单独写在正文末尾（如 `关联 #1024`）
 - 如果不确定 issue 号：**立即停下，询问用户**，不得假设或省略
-- 询问格式：「这次提交需要关联 issue 号，请提供」
+- 询问格式：「这次提交需要关联 issue 号，请提供（如 BCS-448）」
 
 ## 禁止行为
 
 - 不得在开发过程中擅自提交 commit，必须完成后询问用户
 - 不得提交包含多个需求改动的文件，需提醒用户自行处理
 - 不得使用英文写 commit message（前缀关键词除外）
-- 不得省略"为什么"部分
+- 不得省略正文条目（至少一条，格式为 `<类型><序号>:`）
 - 不得在不知道 issue 号的情况下提交（必须先问用户）
 - 不得使用 `--no-verify` 绕过检查
 - 不得遗漏 `.ai/`、`docs/` 下的关联文档
