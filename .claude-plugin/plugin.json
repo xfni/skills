@@ -11,6 +11,7 @@
     "./git-commit-convention",
     "./init-claude",
     "./coding-hard-constraints",
-    "./coding-observability-errors"
+    "./coding-observability-errors",
+    "./karpathy-guidelines"
   ]
 }
