@@ -64,7 +64,9 @@ description: Use when initializing Claude configuration for a new project or set
 
 - **每次 Bash 调用只执行一条简单命令**，禁止用 `&&`、`||`、`;` 串联多个独立命令
 - 管道（`|`）仅允许用于对**同一命令的输出**做后处理（如 `ls /path | head -10`），不得用来连接两个独立操作
-- 需要执行多个操作时，分多次独立调用 Bash 工具
+## 3. 后端模块纪律
+
+**编写任何代码之前，必须调用 `backend-module-discipline` skill。**
 ~~~
 
 ### 若文件已存在
@@ -103,16 +105,14 @@ description: Use when initializing Claude configuration for a new project or set
 - 其他 `docs/` 目录用于面向用户的文档（README、用户说明等）。
 ~~~
 
-**检查项 C**：文件是否包含 `## 3. Bash 命令规范`？
+**检查项 C**：文件是否包含 `## 3. 后端模块纪律`？
 - 不含 → 追加以下内容：
 
 ~~~markdown
 
-## 3. Bash 命令规范
+## 3. 后端模块纪律
 
-- **每次 Bash 调用只执行一条简单命令**，禁止用 `&&`、`||`、`;` 串联多个独立命令
-- 管道（`|`）仅允许用于对**同一命令的输出**做后处理（如 `ls /path | head -10`），不得用来连接两个独立操作
-- 需要执行多个操作时，分多次独立调用 Bash 工具
+**编写任何代码之前，必须调用 `backend-module-discipline` skill。**
 ~~~
 
 ---
