@@ -12,6 +12,7 @@
     "./init-claude",
     "./coding-hard-constraints",
     "./coding-observability-errors",
-    "./karpathy-guidelines"
+    "./karpathy-guidelines",
+    "./backend-module-discipline"
   ]
 }
