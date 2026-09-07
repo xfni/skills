@@ -1,6 +1,6 @@
 {
   "name": "nixiaofeng-skills",
-  "description": "Claude Code skills for disciplined implementation and AI-native requirement-to-code workflows",
+  "description": "Cross-runtime skills for disciplined implementation and AI-native requirement-to-code workflows",
   "version": "1.0.0",
   "author": {
     "name": "nixiaofeng"
@@ -8,14 +8,14 @@
   "license": "MIT",
   "keywords": ["skills", "commit", "coding", "planning", "ai-native", "workflow"],
   "skills": [
-    "./git-commit-convention",
-    "./init-claude",
-    "./coding-hard-constraints",
-    "./coding-observability-errors",
-    "./coding-guidelines",
-    "./backend-module-discipline",
-    "./requirements-to-roadmap",
-    "./roadmap-to-spec-plan",
-    "./spec-plan-to-code"
+    "./skills/git-commit-convention",
+    "./skills/init-claude",
+    "./skills/coding-hard-constraints",
+    "./skills/coding-observability-errors",
+    "./skills/coding-guidelines",
+    "./skills/backend-module-discipline",
+    "./skills/requirements-to-roadmap",
+    "./skills/roadmap-to-spec-plan",
+    "./skills/spec-plan-to-code"
   ]
 }
