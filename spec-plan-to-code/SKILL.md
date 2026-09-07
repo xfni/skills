@@ -27,12 +27,15 @@ After implementation and primary validation, have Cursor review correctness, non
 
 Write or reuse probes for critical success, failure, and fallback paths. When authorized, start the local service and send a real request through the intended dependency chain. Keep credentials out of artifacts and prompts; isolate test data and clean up only exact objects created by the task.
 
-Use [scripts/cursor_review.py](scripts/cursor_review.py) only after external review is authorized and configured:
+Use [scripts/cursor_review.py](scripts/cursor_review.py) only after external review is authorized and configured. The default model is `grok-4.6` with `high` effort, and the default key file is `~/.cursor-review/API_KEY`. Before the first review, check that file. If it is missing or empty, show this reminder and wait for confirmation before retrying:
+
+> Cursor API key is not configured at `~/.cursor-review/API_KEY`. Generate an API key in Cursor, save only the key to that file, then tell me when it is ready.
+
+Never print, commit, or add the key to a prompt. Do not rewrite this open-source skill with a machine-specific path: the documented fixed location persists across calls. Use `--api-key-file`, `--model`, or `--effort` only when a task explicitly needs an override.
 
 ```bash
 python /path/to/spec-plan-to-code/scripts/cursor_review.py \
-  /absolute/path/to/repository /absolute/path/to/review-brief.md \
-  --api-key-file /secure/path/to/key --model <configured-model>
+  /absolute/path/to/repository /absolute/path/to/review-brief.md
 ```
 
 The script is read-only (`read`, `grep`, `glob`, `ls`) and returns a terminal report or an incomplete status. Keep its agent/run IDs, coverage version, findings, and dispositions in the final evidence.

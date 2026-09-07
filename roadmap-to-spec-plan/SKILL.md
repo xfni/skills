@@ -28,12 +28,17 @@ Write the Plan only after the Spec passes this gate. Each task needs an ID, depe
 
 ## Cursor read-only review
 
-When the user has authorized external review and a Cursor Local SDK environment is configured, use [scripts/cursor_review.py](scripts/cursor_review.py). It requires an explicit API-key file and model; it never grants shell or editing tools.
+When the user has authorized external review and a Cursor Local SDK environment is configured, use [scripts/cursor_review.py](scripts/cursor_review.py). It never grants shell or editing tools.
+
+The default model is `grok-4.6` with `high` effort. The default key file is `~/.cursor-review/API_KEY`. Before the first review, check whether that file exists and is non-empty. If it is missing, show this reminder and wait for confirmation before retrying:
+
+> Cursor API key is not configured at `~/.cursor-review/API_KEY`. Generate an API key in Cursor, save only the key to that file, then tell me when it is ready.
+
+Do not print the key, put it in a prompt, commit it, or rewrite this open-source skill with a machine-specific path. The documented fixed location is the durable configuration; `--api-key-file`, `--model`, and `--effort` remain explicit per-call overrides.
 
 ```bash
 python /path/to/roadmap-to-spec-plan/scripts/cursor_review.py \
-  /absolute/path/to/repository /absolute/path/to/review-brief.md \
-  --api-key-file /secure/path/to/key --model <configured-model>
+  /absolute/path/to/repository /absolute/path/to/review-brief.md
 ```
 
 Build the brief from the approved scope, baseline version, relevant paths, decisions, acceptance IDs, and required finding schema. The script's exit code only proves whether a non-empty terminal report was received; assess findings separately. Record agent/run IDs, covered version, report, and disposition in the review ledger. If external review is unavailable, report that gap rather than claiming equivalent coverage.
