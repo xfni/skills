@@ -61,6 +61,20 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
             self.assertIn("`high`", text)
             self.assertIn("Cursor API key is not configured at `~/.cursor-review/API_KEY`", text)
 
+    def test_code_workflow_requires_independent_task_and_milestone_reviews(self):
+        text = (ROOT / "spec-plan-to-code" / "SKILL.md").read_text()
+        required = (
+            "each independent Task and each completed milestone",
+            "primary agent's self-check does not count as independent review",
+            "gpt-5.5-sol` with `high`",
+            "gpt-5.5-sol` with `xhigh`",
+            "gpt-6-astra` with `medium`",
+            "under-review",
+            "read-only consultation agent",
+        )
+        for value in required:
+            self.assertIn(value, text)
+
 
 if __name__ == "__main__":
     unittest.main()
