@@ -39,7 +39,7 @@ Provide the frozen Spec and Plan, Task or milestone boundary, changed version, r
 
 ## Final review and runtime evidence
 
-After all Task and milestone reviews complete, have Cursor review correctness, non-local flows, compatibility, errors, tests, and regressions. Then use a distinct final reviewer for decision → Spec → Plan → code → evidence consistency. Final review complements rather than replaces the required Task and milestone reviews. Re-run affected validation after every accepted fix and independently re-review the changed boundary.
+After all Task and milestone reviews complete, use this fixed final-review order: First use `gpt-6-astra` with `medium` effort for the independent final review. Only after its findings are resolved or dispositioned, use Cursor as the last external review. Astra checks decision → Spec → Plan → code → evidence consistency; Cursor checks correctness, non-local flows, compatibility, errors, tests, and regressions. Final review complements rather than replaces the required Task and milestone reviews. Re-run affected validation after every accepted fix and independently re-review the changed boundary. Do not reverse the order or treat Cursor feedback as permission to expand the approved scope.
 
 Write or reuse probes for critical success, failure, and fallback paths. When authorized, start the local service and send a real request through the intended dependency chain. Keep credentials out of artifacts and prompts; isolate test data and clean up only exact objects created by the task.
 

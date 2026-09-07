@@ -19,8 +19,10 @@ Write a Spec covering behavior, interfaces/data constraints, errors and rollback
 
 Use two distinct review roles:
 
+- `gpt-6-astra` with `medium` effort checks roadmap → decisions → Spec/Plan consistency, hidden business decisions, scope expansion, and acceptance completeness.
 - Cursor checks repository facts, call paths, technical feasibility, compatibility, and testability.
-- An independent reviewer checks roadmap → decisions → Spec/Plan consistency, hidden business decisions, scope expansion, and acceptance completeness.
+
+For every Spec and Plan review iteration, use this fixed final-review order: First use `gpt-6-astra` with `medium` effort for the independent final review. Only after its findings are resolved or dispositioned, use Cursor as the last external review. Do not reverse the order or treat Cursor feedback as permission to expand the approved scope.
 
 Give each review finding an ID, category, evidence, affected requirement/file, impact, recommendation, owner action, and verification result. Categorize findings as Blocker, Ambiguity, Scope Delta, Deferred, or Note. A reviewer label is evidence to assess, not approval to broaden the work. End review when Blockers are resolved or disproved, relevant Ambiguities are decided, Scope Deltas are approved or deferred, and acceptance remains verifiable. Do not use “no issues found” as the exit condition.
 
