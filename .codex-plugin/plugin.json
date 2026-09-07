@@ -1,0 +1,28 @@
+{
+  "name": "nixiaofeng-skills",
+  "version": "1.0.0",
+  "description": "Cross-runtime skills for disciplined implementation and AI-native requirement-to-code workflows",
+  "author": {
+    "name": "nixiaofeng",
+    "url": "https://github.com/xfni"
+  },
+  "homepage": "https://github.com/xfni/skills",
+  "repository": "https://github.com/xfni/skills",
+  "license": "MIT",
+  "keywords": ["skills", "commit", "coding", "planning", "ai-native", "workflow"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Nixiaofeng Skills",
+    "shortDescription": "AI-native software delivery workflows",
+    "longDescription": "Cross-runtime skills for bounded requirement design, reviewed planning, disciplined implementation, and evidence-driven validation.",
+    "developerName": "nixiaofeng",
+    "category": "Productivity",
+    "capabilities": ["Write"],
+    "websiteURL": "https://github.com/xfni/skills",
+    "defaultPrompt": [
+      "Use requirements-to-roadmap to discuss this requirement.",
+      "Use roadmap-to-spec-plan to produce reviewed artifacts.",
+      "Use spec-plan-to-code to implement the approved plan."
+    ]
+  }
+}

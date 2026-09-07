@@ -3,6 +3,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+SKILLS_ROOT = ROOT / "skills"
 SKILLS = (
     "requirements-to-roadmap",
     "roadmap-to-spec-plan",
@@ -15,9 +16,9 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
     def test_skills_are_listed_and_explicit_only(self):
         manifest = (ROOT / ".claude-plugin" / "plugin.json").read_text()
         for name in SKILLS:
-            self.assertIn(f'"./{name}"', manifest)
-            skill = ROOT / name / "SKILL.md"
-            metadata = ROOT / name / "agents" / "openai.yaml"
+            self.assertIn(f'"./skills/{name}"', manifest)
+            skill = SKILLS_ROOT / name / "SKILL.md"
+            metadata = SKILLS_ROOT / name / "agents" / "openai.yaml"
             self.assertTrue(skill.is_file())
             self.assertIn(f"name: {name}", skill.read_text())
             self.assertIn("allow_implicit_invocation: false", metadata.read_text())
@@ -26,7 +27,7 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
         forbidden = ("/Users/nixiaofeng",)
         scripts = []
         for name in CURSOR_SKILLS:
-            script = ROOT / name / "scripts" / "cursor_review.py"
+            script = SKILLS_ROOT / name / "scripts" / "cursor_review.py"
             text = script.read_text()
             scripts.append(text)
             self.assertTrue(script.is_file())
@@ -51,18 +52,18 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
         for readme in (ROOT / "README.md", ROOT / "README.zh.md"):
             text = readme.read_text()
             for name in SKILLS:
-                self.assertIn(f"./{name}/", text)
+                self.assertIn(f"./skills/{name}/", text)
 
     def test_cursor_workflows_document_the_default_configuration(self):
         for name in CURSOR_SKILLS:
-            text = (ROOT / name / "SKILL.md").read_text()
+            text = (SKILLS_ROOT / name / "SKILL.md").read_text()
             self.assertIn("`~/.cursor-review/API_KEY`", text)
             self.assertIn("`grok-4.6`", text)
             self.assertIn("`high`", text)
             self.assertIn("Cursor API key is not configured at `~/.cursor-review/API_KEY`", text)
 
     def test_code_workflow_requires_independent_task_and_milestone_reviews(self):
-        text = (ROOT / "spec-plan-to-code" / "SKILL.md").read_text()
+        text = (SKILLS_ROOT / "spec-plan-to-code" / "SKILL.md").read_text()
         required = (
             "each independent Task and each completed milestone",
             "primary agent's self-check does not count as independent review",
@@ -76,7 +77,7 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
             self.assertIn(value, text)
 
     def test_karpathy_guidelines_require_evidence_for_abstractions(self):
-        text = (ROOT / "coding-guidelines" / "SKILL.md").read_text().lower()
+        text = (SKILLS_ROOT / "coding-guidelines" / "SKILL.md").read_text().lower()
         required = (
             "evidence-driven abstraction",
             "local, explicit, linear orchestration",
@@ -90,12 +91,19 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
 
     def test_coding_guidelines_is_registered_and_required_for_implementation(self):
         manifest = (ROOT / ".claude-plugin" / "plugin.json").read_text()
-        skill = (ROOT / "coding-guidelines" / "SKILL.md").read_text()
-        code_workflow = (ROOT / "spec-plan-to-code" / "SKILL.md").read_text()
-        self.assertIn('"./coding-guidelines"', manifest)
-        self.assertNotIn('"./karpathy-guidelines"', manifest)
+        skill = (SKILLS_ROOT / "coding-guidelines" / "SKILL.md").read_text()
+        code_workflow = (SKILLS_ROOT / "spec-plan-to-code" / "SKILL.md").read_text()
+        self.assertIn('"./skills/coding-guidelines"', manifest)
+        self.assertNotIn('"./skills/karpathy-guidelines"', manifest)
         self.assertIn("name: coding-guidelines", skill)
         self.assertIn("coding-guidelines", code_workflow)
+
+    def test_codex_manifest_reuses_the_shared_skills_directory(self):
+        manifest = ROOT / ".codex-plugin" / "plugin.json"
+        self.assertTrue(manifest.is_file())
+        self.assertIn('"skills": "./skills/"', manifest.read_text())
+        for name in SKILLS:
+            self.assertTrue((SKILLS_ROOT / name / "SKILL.md").is_file())
 
 
 if __name__ == "__main__":
