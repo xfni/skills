@@ -1,0 +1,6 @@
+interface:
+  display_name: Requirements to Roadmap
+  short_description: Discuss and bound a requirement before specification work.
+  default_prompt: Use $requirements-to-roadmap to investigate this request and produce a confirmed roadmap.
+policy:
+  allow_implicit_invocation: false

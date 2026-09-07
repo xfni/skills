@@ -1,0 +1,6 @@
+interface:
+  display_name: Spec and Plan to Code
+  short_description: Implement an approved plan with type-appropriate validation.
+  default_prompt: Use $spec-plan-to-code to implement the approved Spec and Plan for this issue.
+policy:
+  allow_implicit_invocation: false

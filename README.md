@@ -13,6 +13,10 @@ English | [简体中文](./README.zh.md)
 | [coding-hard-constraints](./coding-hard-constraints/) | Structural coding rules: Yoda conditions, defensive access, early returns, strong typing, function complexity limits, security boundaries, and concurrency safety |
 | [coding-observability-errors](./coding-observability-errors/) | Logging and exception governance: entry/exit tracing, structured error codes, resource cleanup, timeout requirements, and error propagation strategy |
 | [karpathy-guidelines](./karpathy-guidelines/) | Behavioral guidelines derived from [Andrej Karpathy's observations](https://x.com/karpathy/status/2015883857489522876): Think Before Coding, Simplicity First, Surgical Changes, Goal-Driven Execution |
+| [backend-module-discipline](./backend-module-discipline/) | Backend architecture discipline: orchestration-only coordinators, subsystem facades, typed boundaries, enum-first state, symmetric-flow extraction, and completed migrations |
+| [requirements-to-roadmap](./requirements-to-roadmap/) | Explicit-only workflow for investigating, discussing, stress-testing, and freezing a bounded requirement roadmap |
+| [roadmap-to-spec-plan](./roadmap-to-spec-plan/) | Explicit-only workflow for turning a confirmed roadmap into reviewed decision, specification, and executable plan artifacts |
+| [spec-plan-to-code](./spec-plan-to-code/) | Explicit-only workflow for implementing an approved plan with type-appropriate validation and evidence |
 
 ## Install
 
@@ -34,7 +38,7 @@ English | [简体中文](./README.zh.md)
 /init-claude
 ```
 
-All five skills are available immediately across every project.
+All nine skills are available immediately across every project. The three AI-native workflow skills activate only when explicitly invoked.
 
 ## Skill Overview
 
