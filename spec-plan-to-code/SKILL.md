@@ -7,6 +7,8 @@ description: Use when the user explicitly invokes $spec-plan-to-code to implemen
 
 Use this explicit-only workflow to implement an approved Decision Package, Spec, and Plan. The primary agent owns all edits, debugging, tests, probes, service runs, and fixes. Reviewers are read-only and do not make product decisions.
 
+**REQUIRED SUB-SKILL:** Use `coding-guidelines` before writing implementation code and when reviewing any change. Its evidence-driven abstraction rule governs whether a direct local orchestration or a new layer is appropriate; no reviewer may turn speculative platformization into a requirement.
+
 The primary agent's self-check does not count as independent review. After completing implementation and primary validation, review each independent Task and each completed milestone with an independent read-only reviewer. A Task or milestone cannot be marked done until its findings are resolved or evidenced as invalid, affected validation is rerun, and the changed boundary is independently re-reviewed.
 
 Route Task and milestone reviewers by the highest applicable complexity:

@@ -12,7 +12,7 @@ English | [简体中文](./README.zh.md)
 | [init-claude](./init-claude/) | Bootstraps Claude configuration for a new project — generates `CLAUDE.md`, merges a low-risk command allowlist into `settings.json`, and installs `git-commit-convention` locally |
 | [coding-hard-constraints](./coding-hard-constraints/) | Structural coding rules: Yoda conditions, defensive access, early returns, strong typing, function complexity limits, security boundaries, and concurrency safety |
 | [coding-observability-errors](./coding-observability-errors/) | Logging and exception governance: entry/exit tracing, structured error codes, resource cleanup, timeout requirements, and error propagation strategy |
-| [karpathy-guidelines](./karpathy-guidelines/) | Behavioral guidelines derived from [Andrej Karpathy's observations](https://x.com/karpathy/status/2015883857489522876): Think Before Coding, Simplicity First, Surgical Changes, Goal-Driven Execution |
+| [coding-guidelines](./coding-guidelines/) | Coding principles for simple, surgical, evidence-driven implementation that avoids speculative abstractions and premature platformization |
 | [backend-module-discipline](./backend-module-discipline/) | Backend architecture discipline: orchestration-only coordinators, subsystem facades, typed boundaries, enum-first state, symmetric-flow extraction, and completed migrations |
 | [requirements-to-roadmap](./requirements-to-roadmap/) | Explicit-only workflow for investigating, discussing, stress-testing, and freezing a bounded requirement roadmap |
 | [roadmap-to-spec-plan](./roadmap-to-spec-plan/) | Explicit-only workflow for turning a confirmed roadmap into reviewed decision, specification, and executable plan artifacts |
@@ -90,9 +90,9 @@ Logging and exception standards for service layer and external integrations:
 - **Error propagation** — recoverable errors return result codes; unrecoverable errors propagate upward
 - **Timeouts** — every cross-service call must set an explicit timeout (≥ P99 baseline)
 
-### karpathy-guidelines
+### coding-guidelines
 
-Four principles to reduce common LLM coding mistakes:
+Five principles to reduce common LLM coding mistakes:
 
 | Principle | Addresses |
 |-----------|-----------|
@@ -100,6 +100,7 @@ Four principles to reduce common LLM coding mistakes:
 | **Simplicity First** | Overcomplication, bloated abstractions, speculative features |
 | **Surgical Changes** | Orthogonal edits, touching code outside the task scope |
 | **Goal-Driven Execution** | Verifiable success criteria, test-first loops |
+| **Evidence-Driven Abstraction** | Framework-like layers without current consumers or variation |
 
 ## Requirements
 

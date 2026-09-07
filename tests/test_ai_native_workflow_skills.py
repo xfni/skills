@@ -75,6 +75,28 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
         for value in required:
             self.assertIn(value, text)
 
+    def test_karpathy_guidelines_require_evidence_for_abstractions(self):
+        text = (ROOT / "coding-guidelines" / "SKILL.md").read_text().lower()
+        required = (
+            "evidence-driven abstraction",
+            "local, explicit, linear orchestration",
+            "two current independent consumers",
+            "future flexibility is not evidence",
+            "pipeline, context, registry, executor, manager, or factory",
+            "abstraction receipt",
+        )
+        for value in required:
+            self.assertIn(value, text)
+
+    def test_coding_guidelines_is_registered_and_required_for_implementation(self):
+        manifest = (ROOT / ".claude-plugin" / "plugin.json").read_text()
+        skill = (ROOT / "coding-guidelines" / "SKILL.md").read_text()
+        code_workflow = (ROOT / "spec-plan-to-code" / "SKILL.md").read_text()
+        self.assertIn('"./coding-guidelines"', manifest)
+        self.assertNotIn('"./karpathy-guidelines"', manifest)
+        self.assertIn("name: coding-guidelines", skill)
+        self.assertIn("coding-guidelines", code_workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
