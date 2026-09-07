@@ -1,4 +1,5 @@
 import argparse
+import sys
 import time
 from pathlib import Path
 
@@ -7,6 +8,9 @@ from cursor_sdk import AgentOptions, Client, LocalAgentOptions, ModelParameterVa
 
 TERMINAL_FAILURES = {"failed", "error", "cancelled", "canceled", "stopped", "expired"}
 READ_ONLY_TOOLS = ["read", "grep", "glob", "ls"]
+DEFAULT_API_KEY_FILE = Path.home() / ".cursor-review" / "API_KEY"
+DEFAULT_MODEL = "grok-4.6"
+DEFAULT_EFFORT = "high"
 
 
 def parse_args():
@@ -14,9 +18,9 @@ def parse_args():
     parser.add_argument("repo", help="Target repository or worktree")
     parser.add_argument("prompt_file", help="UTF-8 review brief")
     parser.add_argument("agent_id", nargs="?", help="Finished agent to resume in the same workspace")
-    parser.add_argument("--api-key-file", required=True, help="Path to an API key file; its value is never printed")
-    parser.add_argument("--model", required=True, help="Cursor model ID configured by the caller")
-    parser.add_argument("--effort", default="high", help="Model effort parameter")
+    parser.add_argument("--api-key-file", default=DEFAULT_API_KEY_FILE, help="API key file; default: %(default)s")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help="Cursor model ID; default: %(default)s")
+    parser.add_argument("--effort", default=DEFAULT_EFFORT, help="Model effort parameter; default: %(default)s")
     parser.add_argument("--timeout-seconds", type=int, default=960, help="Bounded wait time; default: 960")
     parser.add_argument("--poll-seconds", type=int, default=10, help="Run polling interval; default: 10")
     args = parser.parse_args()
@@ -25,13 +29,34 @@ def parse_args():
     return args
 
 
+def read_api_key(api_key_file):
+    try:
+        api_key = api_key_file.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        print(
+            f"INCOMPLETE: Cursor API key is not configured at {api_key_file}. Generate an API key in Cursor, "
+            f"save only the key to {DEFAULT_API_KEY_FILE}, then rerun this command.",
+            file=sys.stderr,
+        )
+        return None
+    if api_key:
+        return api_key
+    print(
+        f"INCOMPLETE: Cursor API key is not configured: {api_key_file} is empty. Generate an API key in Cursor, "
+        f"save only the key to {DEFAULT_API_KEY_FILE}, then rerun this command.",
+        file=sys.stderr,
+    )
+    return None
+
+
 def main():
     args = parse_args()
     repo = str(Path(args.repo).resolve(strict=True))
     prompt = Path(args.prompt_file).read_text(encoding="utf-8")
-    api_key = Path(args.api_key_file).read_text(encoding="utf-8").strip()
-    if not api_key:
-        raise RuntimeError("API key file is empty")
+    api_key_file = Path(args.api_key_file).expanduser()
+    api_key = read_api_key(api_key_file)
+    if api_key is None:
+        return 2
 
     model = ModelSelection(
         id=args.model,

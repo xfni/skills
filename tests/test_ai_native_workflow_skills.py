@@ -23,7 +23,7 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
             self.assertIn("allow_implicit_invocation: false", metadata.read_text())
 
     def test_cursor_review_scripts_are_portable_and_read_only(self):
-        forbidden = ("/Users/nixiaofeng", "API_KEY", "grok-4.6")
+        forbidden = ("/Users/nixiaofeng",)
         scripts = []
         for name in CURSOR_SKILLS:
             script = ROOT / name / "scripts" / "cursor_review.py"
@@ -31,6 +31,16 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
             scripts.append(text)
             self.assertTrue(script.is_file())
             self.assertIn("--api-key-file", text)
+            self.assertIn('DEFAULT_API_KEY_FILE = Path.home() / ".cursor-review" / "API_KEY"', text)
+            self.assertIn('DEFAULT_MODEL = "grok-4.6"', text)
+            self.assertIn('DEFAULT_EFFORT = "high"', text)
+            self.assertIn("default=DEFAULT_API_KEY_FILE", text)
+            self.assertIn("default=DEFAULT_MODEL", text)
+            self.assertIn("default=DEFAULT_EFFORT", text)
+            self.assertNotIn('"--api-key-file", required=True', text)
+            self.assertIn("Cursor API key is not configured", text)
+            self.assertIn("INCOMPLETE: Cursor API key is not configured", text)
+            self.assertNotIn("raise RuntimeError(", text)
             self.assertIn('mode="plan"', text)
             self.assertIn('tools=["read", "grep", "glob", "ls"]', text)
             for value in forbidden:
@@ -42,6 +52,14 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
             text = readme.read_text()
             for name in SKILLS:
                 self.assertIn(f"./{name}/", text)
+
+    def test_cursor_workflows_document_the_default_configuration(self):
+        for name in CURSOR_SKILLS:
+            text = (ROOT / name / "SKILL.md").read_text()
+            self.assertIn("`~/.cursor-review/API_KEY`", text)
+            self.assertIn("`grok-4.6`", text)
+            self.assertIn("`high`", text)
+            self.assertIn("Cursor API key is not configured at `~/.cursor-review/API_KEY`", text)
 
 
 if __name__ == "__main__":
