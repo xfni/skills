@@ -8,7 +8,7 @@
     {
       "name": "nixiaofeng-skills",
       "source": "./",
-      "description": "Personal Claude Code skills: git commit convention, project init, auto unit test, coding hard constraints, observability & error handling",
+      "description": "Claude Code skills for disciplined implementation and explicit AI-native requirement-to-code workflows",
       "version": "1.0.0",
       "author": {
         "name": "nixiaofeng"
@@ -18,7 +18,10 @@
         "commit",
         "coding",
         "testing",
-        "observability"
+        "observability",
+        "planning",
+        "ai-native",
+        "workflow"
       ],
       "category": "workflow"
     }

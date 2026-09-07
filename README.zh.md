@@ -14,6 +14,9 @@
 | [coding-observability-errors](./coding-observability-errors/) | 日志与异常治理：入口/出口埋点、标准化错误码、资源释放、超时要求、错误传播策略 |
 | [karpathy-guidelines](./karpathy-guidelines/) | 源自 [Andrej Karpathy 观察](https://x.com/karpathy/status/2015883857489522876) 的编码行为准则：编码前先思考、简洁优先、外科手术式修改、目标驱动执行 |
 | [backend-module-discipline](./backend-module-discipline/) | 后端模块纪律：协调层只调度、子系统单入口、类型对象跨边界、枚举优先、对称代码立刻抽、半迁移不过夜、体量红线 |
+| [requirements-to-roadmap](./requirements-to-roadmap/) | 显式调用的需求设计工作流：定位、讨论、质询并冻结有边界的需求路线图 |
+| [roadmap-to-spec-plan](./roadmap-to-spec-plan/) | 显式调用的设计工作流：将确认的 roadmap 转为经审阅的决策包、Spec 和可执行 Plan |
+| [spec-plan-to-code](./spec-plan-to-code/) | 显式调用的开发工作流：按变更类型验证，实现已批准的 Spec 和 Plan 并保留证据 |
 
 ## 安装
 
@@ -35,7 +38,7 @@
 /init-claude
 ```
 
-安装完成后，全部六个技能即可在所有项目中直接调用。
+安装完成后，全部九个技能即可在所有项目中直接调用；其中三个 AI-native 工作流仅在显式调用时启用。
 
 ## 技能详解
 
