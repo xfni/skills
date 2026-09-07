@@ -76,6 +76,15 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
         for value in required:
             self.assertIn(value, text)
 
+    def test_astra_precedes_cursor_in_final_review_order(self):
+        expected = (
+            "First use `gpt-6-astra` with `medium` effort for the independent final review. "
+            "Only after its findings are resolved or dispositioned, use Cursor as the last external review."
+        )
+        for name in ("roadmap-to-spec-plan", "spec-plan-to-code"):
+            text = (SKILLS_ROOT / name / "SKILL.md").read_text()
+            self.assertIn(expected, text)
+
     def test_karpathy_guidelines_require_evidence_for_abstractions(self):
         text = (SKILLS_ROOT / "coding-guidelines" / "SKILL.md").read_text().lower()
         required = (
