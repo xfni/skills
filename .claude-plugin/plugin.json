@@ -12,7 +12,7 @@
     "./init-claude",
     "./coding-hard-constraints",
     "./coding-observability-errors",
-    "./karpathy-guidelines",
+    "./coding-guidelines",
     "./backend-module-discipline",
     "./requirements-to-roadmap",
     "./roadmap-to-spec-plan",

@@ -12,7 +12,7 @@
 | [init-claude](./init-claude/) | 为新项目初始化 Claude 配置——生成 `CLAUDE.md`、合并低风险命令放行列表到 `settings.json`、并将 `git-commit-convention` 安装到项目本地 |
 | [coding-hard-constraints](./coding-hard-constraints/) | 编码硬约束：Yoda 条件判断、防御式访问、早返原则、强类型、函数复杂度限制、安全边界、并发安全 |
 | [coding-observability-errors](./coding-observability-errors/) | 日志与异常治理：入口/出口埋点、标准化错误码、资源释放、超时要求、错误传播策略 |
-| [karpathy-guidelines](./karpathy-guidelines/) | 源自 [Andrej Karpathy 观察](https://x.com/karpathy/status/2015883857489522876) 的编码行为准则：编码前先思考、简洁优先、外科手术式修改、目标驱动执行 |
+| [coding-guidelines](./coding-guidelines/) | 编码行为准则：简洁、外科手术式修改、证据驱动抽象，避免推测性平台化 |
 | [backend-module-discipline](./backend-module-discipline/) | 后端模块纪律：协调层只调度、子系统单入口、类型对象跨边界、枚举优先、对称代码立刻抽、半迁移不过夜、体量红线 |
 | [requirements-to-roadmap](./requirements-to-roadmap/) | 显式调用的需求设计工作流：定位、讨论、质询并冻结有边界的需求路线图 |
 | [roadmap-to-spec-plan](./roadmap-to-spec-plan/) | 显式调用的设计工作流：将确认的 roadmap 转为经审阅的决策包、Spec 和可执行 Plan |
@@ -90,9 +90,9 @@ Service 层与外部集成的日志和异常规范：
 - **错误传播** — 可恢复错误返回结果码，不可恢复错误向上抛出
 - **超时** — 每个跨服务调用必须显式设置超时（不低于 P99 基线）
 
-### karpathy-guidelines
+### coding-guidelines
 
-减少 LLM 常见编码失误的四条行为准则：
+减少 LLM 常见编码失误的五条行为准则：
 
 | 准则 | 针对问题 |
 |------|----------|
@@ -100,6 +100,7 @@ Service 层与外部集成的日志和异常规范：
 | **简洁优先** | 过度复杂、臃肿抽象、推测性功能 |
 | **外科手术式修改** | 无关改动、触碰任务范围外的代码 |
 | **目标驱动执行** | 可验证的成功标准、测试优先循环 |
+| **证据驱动抽象** | 没有当前消费者或变体支撑的框架化分层 |
 
 ### backend-module-discipline
 
