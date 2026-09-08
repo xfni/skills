@@ -9,6 +9,10 @@ SKILLS = (
     "roadmap-to-spec-plan",
     "spec-plan-to-code",
 )
+SPECIALIST_SKILLS = (
+    "concurrent-design-review",
+    "spec-review-gate",
+)
 CURSOR_SKILLS = SKILLS[1:]
 
 
@@ -85,6 +89,34 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
             text = (SKILLS_ROOT / name / "SKILL.md").read_text()
             self.assertIn(expected, text)
 
+    def test_workflows_preserve_portable_review_governance(self):
+        roadmap = (SKILLS_ROOT / "roadmap-to-spec-plan" / "SKILL.md").read_text()
+        code = (SKILLS_ROOT / "spec-plan-to-code" / "SKILL.md").read_text()
+        for value in (
+            "same dispute remains unresolved for two review rounds",
+            "review only the changed boundary, unresolved findings, and affected artifacts",
+            "A reviewer label is evidence to assess, not approval",
+        ):
+            self.assertIn(value, roadmap)
+        for value in (
+            "existing user changes",
+            "actual command, result, evidence location, remaining risk, and scope variance",
+            "isolate test data",
+            "return to the Astra → Cursor final-review sequence",
+        ):
+            self.assertIn(value, code)
+
+    def test_workflow_handoff_preserves_requirement_phase_and_evidence_traceability(self):
+        roadmap = (SKILLS_ROOT / "requirements-to-roadmap" / "SKILL.md").read_text()
+        spec_plan = (SKILLS_ROOT / "roadmap-to-spec-plan" / "SKILL.md").read_text()
+        code = (SKILLS_ROOT / "spec-plan-to-code" / "SKILL.md").read_text()
+        self.assertIn("Requirement ID", roadmap)
+        self.assertIn("selected Phase ID", spec_plan)
+        self.assertIn("`REQ-*` → `DEC-*` → `AC-*`", spec_plan)
+        self.assertIn("linked requirement, decision, and acceptance IDs", spec_plan)
+        self.assertIn("linked `REQ-*`, `DEC-*`, and `AC-*` IDs", code)
+        self.assertIn("`REQ-*` → `AC-*` → evidence", code)
+
     def test_karpathy_guidelines_require_evidence_for_abstractions(self):
         text = (SKILLS_ROOT / "coding-guidelines" / "SKILL.md").read_text().lower()
         required = (
@@ -113,6 +145,22 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
         self.assertIn('"skills": "./skills/"', manifest.read_text())
         for name in SKILLS:
             self.assertTrue((SKILLS_ROOT / name / "SKILL.md").is_file())
+
+    def test_concurrency_gate_delegates_to_one_specialist_review_authority(self):
+        manifest = (ROOT / ".claude-plugin" / "plugin.json").read_text()
+        concurrent = (SKILLS_ROOT / "concurrent-design-review" / "SKILL.md").read_text()
+        gate = (SKILLS_ROOT / "spec-review-gate" / "SKILL.md").read_text()
+        for name in SPECIALIST_SKILLS:
+            self.assertIn(f'"./skills/{name}"', manifest)
+        self.assertIn("唯一评审派发与覆盖判定入口", concurrent)
+        self.assertIn("不得预先派发 reviewer", gate)
+        self.assertIn("owns coverage", gate)
+
+    def test_readmes_document_specialist_review_skills(self):
+        for readme in (ROOT / "README.md", ROOT / "README.zh.md"):
+            text = readme.read_text()
+            for name in SPECIALIST_SKILLS:
+                self.assertIn(f"./skills/{name}/", text)
 
 
 if __name__ == "__main__":

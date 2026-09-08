@@ -26,11 +26,11 @@ Stop only when the target, terms, scope, non-goals, key decisions, and observabl
 Use the repository's established location; otherwise use `.ai/roadmaps/YYYY-MM-DD-<topic>.md`. Keep stable IDs when revising:
 
 - Context: issue/source, status, original problem, verified facts, assumptions, and unknowns.
-- Requirements: `REQ-*` entries tied to actors and outcomes.
+- Requirements: `REQ-*` entries with a stable Requirement ID, tied to actors and outcomes.
 - Decisions: `DEC-*` entries with options, confirmed choice, rationale, source, and status.
 - Boundaries: in scope, non-goals, invariants, allowed components, dependencies, and Deferred work.
 - Acceptance direction: `AC-*` entries for normal, failure, boundary, and compatibility outcomes.
-- Phases: purpose, related IDs, high-level work, dependency, deliverable, completion criterion, and priority.
-- Handoff: the next phase to design, unresolved questions, and decisions that later work must not change.
+- Phases: a stable Phase ID, purpose, related requirement, decision, and acceptance IDs, high-level work, dependency, deliverable, completion criterion, and priority.
+- Handoff: the selected Phase ID for the next design call, unresolved questions, and decisions that later work must not change.
 
 Before delivery, verify that every requirement has an acceptance direction, every phase supports a requirement, and no unapproved proposal appears in the frozen scope. Report the roadmap path, confirmation state, important decisions, and the explicit next invocation, such as `$roadmap-to-spec-plan`.

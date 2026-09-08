@@ -14,8 +14,10 @@ English | [简体中文](./README.zh.md)
 | [coding-observability-errors](./skills/coding-observability-errors/) | Logging and exception governance: entry/exit tracing, structured error codes, resource cleanup, timeout requirements, and error propagation strategy |
 | [coding-guidelines](./skills/coding-guidelines/) | Coding principles for simple, surgical, evidence-driven implementation that avoids speculative abstractions and premature platformization |
 | [backend-module-discipline](./skills/backend-module-discipline/) | Backend architecture discipline: orchestration-only coordinators, subsystem facades, typed boundaries, enum-first state, symmetric-flow extraction, and completed migrations |
+| [concurrent-design-review](./skills/concurrent-design-review/) | Independent two-perspective review for concurrent, lifecycle, and shared-state designs, including code-path reality and system failure modes |
 | [requirements-to-roadmap](./skills/requirements-to-roadmap/) | Explicit-only workflow for investigating, discussing, stress-testing, and freezing a bounded requirement roadmap |
 | [roadmap-to-spec-plan](./skills/roadmap-to-spec-plan/) | Explicit-only workflow for turning a confirmed roadmap into reviewed decision, specification, and executable plan artifacts |
+| [spec-review-gate](./skills/spec-review-gate/) | Risk gate before planning that identifies concurrency and lifecycle designs and invokes the specialist review workflow |
 | [spec-plan-to-code](./skills/spec-plan-to-code/) | Explicit-only workflow for implementing an approved plan with type-appropriate validation and evidence |
 
 ## Install in Claude Code
@@ -38,7 +40,7 @@ English | [简体中文](./README.zh.md)
 /init-claude
 ```
 
-All nine skills are available immediately across every project. The three AI-native workflow skills activate only when explicitly invoked.
+All eleven skills are available immediately across every project. The three AI-native workflow skills activate only when explicitly invoked.
 
 ## Use in Codex
 
