@@ -9,9 +9,7 @@
 | 技能 | 说明 |
 |------|------|
 | [git-commit-convention](./skills/git-commit-convention/) | 强制执行结构化 commit 格式：第一行 `前缀(ISSUE): 摘要`，正文使用类型序号条目（`feat1:`、`fix1:` 等），并严格限制文件提交范围 |
-| [init-claude](./skills/init-claude/) | 为新项目初始化 Claude 配置——生成 `CLAUDE.md`、合并低风险命令放行列表到 `settings.json`、并将 `git-commit-convention` 安装到项目本地 |
 | [coding-guidelines](./skills/coding-guidelines/) | 编码行为准则：简洁、外科手术式修改、证据驱动抽象与按风险的可靠性边界 |
-| [privacy-coding-rule](./skills/privacy-coding-rule/) | 组织内部的隐私和数据处理规则，以权威内部制度为准执行 |
 | [backend-module-discipline](./skills/backend-module-discipline/) | 后端模块纪律：协调层只调度、子系统单入口、类型对象跨边界、枚举优先、对称代码立刻抽、半迁移不过夜、体量红线 |
 | [concurrent-design-review](./skills/concurrent-design-review/) | 并发、生命周期与共享状态设计的独立双视角评审：同时核查真实代码路径与系统失败模式 |
 | [requirements-to-roadmap](./skills/requirements-to-roadmap/) | 显式调用的需求设计工作流：定位、讨论、质询并冻结有边界的需求路线图 |
@@ -33,13 +31,7 @@
 /plugins install nixiaofeng-skills@nixiaofeng-skills
 ```
 
-**第三步 — 初始化项目：**
-
-```
-/init-claude
-```
-
-安装完成后，全部十一个技能即可在所有项目中直接调用；其中三个 AI-native 工作流仅在显式调用时启用。
+安装完成后，全部九个技能即可在所有项目中直接调用；其中三个 AI-native 工作流仅在显式调用时启用。
 
 ## 在 Codex 中使用
 
@@ -63,24 +55,6 @@ fix1: 修复 HTTP 通道在空 body 时返回 500 的问题
 - 正文至少一条类型序号条目（`feat1:`、`fix1:`、`refactor1:` 等）
 - `.ai/` 和 `docs/` 下的关联文档必须与代码同批提交
 - 禁止在开发过程中自行提交，必须先询问用户
-
-### init-claude
-
-一条命令完成新项目的 Claude 配置初始化：
-
-1. 询问：项目级还是全局作用域？
-2. 写入（或追加）`CLAUDE.md`，包含 commit 规范与文档规范
-3. 将精选低风险命令放行列表合并到 `.claude/settings.json`
-4. 将 `git-commit-convention` 复制到项目的 `.claude/skills/`
-
-### privacy-coding-rule
-
-组织内部隐私与数据处理要求的统一入口：
-
-- **制度优先** — 以权威内部规则为准，不得自行发明或放宽隐私规则
-- **全链路评估** — 覆盖采集、转换、遥测、消息队列、存储、导出、测试数据与外部调用
-- **获批目的地** — 仅使用获批的存储、遥测字段、脱敏方式和外部集成
-- **证据与升级** — 保留制度引用和要求的证据；规则缺失或冲突时升级给制度责任人
 
 ### coding-guidelines
 

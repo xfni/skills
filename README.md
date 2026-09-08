@@ -9,9 +9,7 @@ English | [简体中文](./README.zh.md)
 | Skill | Description |
 |-------|-------------|
 | [git-commit-convention](./skills/git-commit-convention/) | Enforces a structured Chinese commit format: `prefix(ISSUE): summary` on the first line, typed body entries (`feat1:`, `fix1:`, ...), and strict file-scope rules |
-| [init-claude](./skills/init-claude/) | Bootstraps Claude configuration for a new project — generates `CLAUDE.md`, merges a low-risk command allowlist into `settings.json`, and installs `git-commit-convention` locally |
 | [coding-guidelines](./skills/coding-guidelines/) | Coding principles for simple, surgical, evidence-driven implementation, including risk-based reliability boundaries |
-| [privacy-coding-rule](./skills/privacy-coding-rule/) | Organization-owned privacy and data-handling rules, applied from the authoritative internal policy |
 | [backend-module-discipline](./skills/backend-module-discipline/) | Backend architecture discipline: orchestration-only coordinators, subsystem facades, typed boundaries, enum-first state, symmetric-flow extraction, and completed migrations |
 | [concurrent-design-review](./skills/concurrent-design-review/) | Independent two-perspective review for concurrent, lifecycle, and shared-state designs, including code-path reality and system failure modes |
 | [requirements-to-roadmap](./skills/requirements-to-roadmap/) | Explicit-only workflow for investigating, discussing, stress-testing, and freezing a bounded requirement roadmap |
@@ -33,13 +31,7 @@ English | [简体中文](./README.zh.md)
 /plugins install nixiaofeng-skills@nixiaofeng-skills
 ```
 
-**Step 3 — Initialize your project:**
-
-```
-/init-claude
-```
-
-All eleven skills are available immediately across every project. The three AI-native workflow skills activate only when explicitly invoked.
+All nine skills are available immediately across every project. The three AI-native workflow skills activate only when explicitly invoked.
 
 ## Use in Codex
 
@@ -63,24 +55,6 @@ Rules enforced:
 - At least one typed body entry (`feat1:`, `fix1:`, `refactor1:`, ...)
 - Related docs under `.ai/` and `docs/` must be committed in the same batch
 - Never commit mid-development; always ask the user first
-
-### init-claude
-
-One command to bootstrap any new project:
-
-1. Asks: project-level or global scope?
-2. Writes (or appends to) `CLAUDE.md` with commit and documentation conventions
-3. Merges a curated low-risk command allowlist into `.claude/settings.json`
-4. Copies `git-commit-convention` into the project's `.claude/skills/`
-
-### privacy-coding-rule
-
-The organization-owned entry point for privacy and data-handling requirements:
-
-- **Policy first** — apply the authoritative internal policy; do not invent or weaken a privacy rule
-- **End-to-end path** — assess collection, transformation, telemetry, queues, storage, exports, test data, and external calls
-- **Approved destinations** — use only approved storage, telemetry fields, redaction methods, and integrations
-- **Evidence and escalation** — retain the policy reference and required evidence; escalate missing or conflicting rules to the policy owner
 
 ### coding-guidelines
 
