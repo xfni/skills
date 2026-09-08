@@ -9,8 +9,7 @@ English | [简体中文](./README.zh.md)
 | Skill | Description |
 |-------|-------------|
 | [git-commit-convention](./skills/git-commit-convention/) | Enforces a structured Chinese commit format: `prefix(ISSUE): summary` on the first line, typed body entries (`feat1:`, `fix1:`, ...), and strict file-scope rules |
-| [coding-guidelines](./skills/coding-guidelines/) | Coding principles for simple, surgical, evidence-driven implementation, including risk-based reliability boundaries |
-| [backend-module-discipline](./skills/backend-module-discipline/) | Backend architecture discipline: orchestration-only coordinators, subsystem facades, typed boundaries, enum-first state, symmetric-flow extraction, and completed migrations |
+| [coding-guidelines](./skills/coding-guidelines/) | Coding principles for simple, surgical, evidence-driven implementation, including reliability, module boundaries, and complete migrations |
 | [concurrent-design-review](./skills/concurrent-design-review/) | Independent two-perspective review for concurrent, lifecycle, and shared-state designs, including code-path reality and system failure modes |
 | [requirements-to-roadmap](./skills/requirements-to-roadmap/) | Explicit-only workflow for investigating, discussing, stress-testing, and freezing a bounded requirement roadmap |
 | [roadmap-to-spec-plan](./skills/roadmap-to-spec-plan/) | Explicit-only workflow for turning a confirmed roadmap into reviewed decision, specification, and executable plan artifacts |
@@ -31,7 +30,7 @@ English | [简体中文](./README.zh.md)
 /plugins install nixiaofeng-skills@nixiaofeng-skills
 ```
 
-All nine skills are available immediately across every project. The three AI-native workflow skills activate only when explicitly invoked.
+All eight skills are available immediately across every project. The three AI-native workflow skills activate only when explicitly invoked.
 
 ## Use in Codex
 
@@ -58,7 +57,7 @@ Rules enforced:
 
 ### coding-guidelines
 
-Five principles to reduce common LLM coding mistakes:
+Six principles to reduce common LLM coding mistakes:
 
 | Principle | Addresses |
 |-----------|-----------|
@@ -67,6 +66,7 @@ Five principles to reduce common LLM coding mistakes:
 | **Surgical Changes** | Orthogonal edits, touching code outside the task scope |
 | **Goal-Driven Execution** | Verifiable success criteria, test-first loops |
 | **Evidence-Driven Abstraction** | Framework-like layers without current consumers or variation |
+| **Module Boundaries and Migrations** | Coordinators absorbing subsystem behavior, loose cross-module contracts, and half-finished migrations |
 | **Reliability Boundaries** | Untrusted input, executable interfaces, resources, privacy, and concurrency risks |
 
 ## Requirements
