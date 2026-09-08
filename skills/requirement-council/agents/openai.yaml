@@ -1,0 +1,6 @@
+interface:
+  display_name: "Requirement Council"
+  short_description: "Compare feature directions with four advisory roles"
+  default_prompt: "Use $requirement-council to explore this requirement text:\n\nLet users review complete request records without exposing sensitive data."
+policy:
+  allow_implicit_invocation: false
