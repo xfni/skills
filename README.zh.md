@@ -10,9 +10,8 @@
 |------|------|
 | [git-commit-convention](./skills/git-commit-convention/) | 强制执行结构化 commit 格式：第一行 `前缀(ISSUE): 摘要`，正文使用类型序号条目（`feat1:`、`fix1:` 等），并严格限制文件提交范围 |
 | [init-claude](./skills/init-claude/) | 为新项目初始化 Claude 配置——生成 `CLAUDE.md`、合并低风险命令放行列表到 `settings.json`、并将 `git-commit-convention` 安装到项目本地 |
-| [coding-hard-constraints](./skills/coding-hard-constraints/) | 编码硬约束：Yoda 条件判断、防御式访问、早返原则、强类型、函数复杂度限制、安全边界、并发安全 |
-| [coding-observability-errors](./skills/coding-observability-errors/) | 日志与异常治理：入口/出口埋点、标准化错误码、资源释放、超时要求、错误传播策略 |
-| [coding-guidelines](./skills/coding-guidelines/) | 编码行为准则：简洁、外科手术式修改、证据驱动抽象，避免推测性平台化 |
+| [coding-guidelines](./skills/coding-guidelines/) | 编码行为准则：简洁、外科手术式修改、证据驱动抽象与按风险的可靠性边界 |
+| [privacy-coding-rule](./skills/privacy-coding-rule/) | 组织内部的隐私和数据处理规则，以权威内部制度为准执行 |
 | [backend-module-discipline](./skills/backend-module-discipline/) | 后端模块纪律：协调层只调度、子系统单入口、类型对象跨边界、枚举优先、对称代码立刻抽、半迁移不过夜、体量红线 |
 | [concurrent-design-review](./skills/concurrent-design-review/) | 并发、生命周期与共享状态设计的独立双视角评审：同时核查真实代码路径与系统失败模式 |
 | [requirements-to-roadmap](./skills/requirements-to-roadmap/) | 显式调用的需求设计工作流：定位、讨论、质询并冻结有边界的需求路线图 |
@@ -74,27 +73,14 @@ fix1: 修复 HTTP 通道在空 body 时返回 500 的问题
 3. 将精选低风险命令放行列表合并到 `.claude/settings.json`
 4. 将 `git-commit-convention` 复制到项目的 `.claude/skills/`
 
-### coding-hard-constraints
+### privacy-coding-rule
 
-编写、审查或重构任何代码时强制遵守的结构性规则：
+组织内部隐私与数据处理要求的统一入口：
 
-- **Yoda 条件** — 常量在左：`nil == err`、`None is value`
-- **防御式访问** — 禁止深链式调用，使用可选链或空值守卫
-- **早返原则** — 卫语句优先，主逻辑保持在最左侧缩进
-- **强类型** — 禁止用裸 `dict`、`Map<String,Object>`、`Record<string,any>` 传递业务数据
-- **复杂度限制** — 单函数最多 40 行、4 个参数、3 层嵌套
-- **安全边界** — 仅使用参数化查询，系统边界处校验输入，禁止日志中出现密钥
-- **并发安全** — 所有共享可变状态必须显式保护
-
-### coding-observability-errors
-
-Service 层与外部集成的日志和异常规范：
-
-- **埋点** — 入口（INFO）、关键节点（INFO）、出口（INFO）、排查细节（DEBUG）、预期内错误（WARN）、系统崩溃（ERROR）
-- **注释** — 解释*为什么*，而非*是什么*；公共函数必须有标准头注释
-- **异常治理** — 禁止空 catch 块；异常必须映射为标准 `Code + Message`；资源必须使用 `try-with-resources` / `with` / `defer`
-- **错误传播** — 可恢复错误返回结果码，不可恢复错误向上抛出
-- **超时** — 每个跨服务调用必须显式设置超时（不低于 P99 基线）
+- **制度优先** — 以权威内部规则为准，不得自行发明或放宽隐私规则
+- **全链路评估** — 覆盖采集、转换、遥测、消息队列、存储、导出、测试数据与外部调用
+- **获批目的地** — 仅使用获批的存储、遥测字段、脱敏方式和外部集成
+- **证据与升级** — 保留制度引用和要求的证据；规则缺失或冲突时升级给制度责任人
 
 ### coding-guidelines
 
@@ -107,6 +93,7 @@ Service 层与外部集成的日志和异常规范：
 | **外科手术式修改** | 无关改动、触碰任务范围外的代码 |
 | **目标驱动执行** | 可验证的成功标准、测试优先循环 |
 | **证据驱动抽象** | 没有当前消费者或变体支撑的框架化分层 |
+| **可靠性边界** | 不可信输入、可执行接口、资源、隐私与并发风险 |
 
 ### backend-module-discipline
 
