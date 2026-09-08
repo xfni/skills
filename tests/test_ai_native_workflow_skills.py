@@ -189,6 +189,21 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
             for name in SPECIALIST_SKILLS:
                 self.assertIn(f"./skills/{name}/", text)
 
+    def test_readmes_document_runtime_and_workflow_dependencies(self):
+        english = (ROOT / "README.md").read_text()
+        chinese = (ROOT / "README.zh.md").read_text()
+        for text in (english, chinese):
+            for value in (
+                "brainstorming",
+                "grilling",
+                "coding-guidelines",
+                "concurrent-design-review",
+                "spec-review-gate",
+                "Cursor",
+                "Codex",
+            ):
+                self.assertIn(value, text)
+
     def test_obsolete_init_claude_skill_and_its_docs_are_not_packaged(self):
         manifest = (ROOT / ".claude-plugin" / "plugin.json").read_text()
         self.assertNotIn('"./skills/init-claude"', manifest)
