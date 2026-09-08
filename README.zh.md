@@ -10,6 +10,7 @@
 
 ```mermaid
 flowchart LR
+    RC["$requirement-council<br/>可选，仅 Codex"] -. 人工选择并显式调用下一阶段 .-> R
     R["$requirements-to-roadmap"] --> S["$roadmap-to-spec-plan"] --> C["$spec-plan-to-code"]
     R -. 可选讨论方法 .-> B["brainstorming + grilling"]
     S -. 命中并发/生命周期风险 .-> G["$spec-review-gate"]
@@ -19,7 +20,9 @@ flowchart LR
     C -. 可选只读终审 .-> CU
 ```
 
-三个工作流技能均为仅显式调用：它们不会自动串联。一个阶段完成并由人工确认交接后，再调用下一个技能。
+`requirement-council` 是面对非空功能需求文本的可选、仅 Codex 预工作流阶段；输入既可以是一句模糊需求，也可以是多行初稿。四个只读角色围绕证据支持的方向进行讨论，供人工选择。它在 roadmap、Spec、Plan 或实现之前结束；是否采用其结果由人工决定，之后如有需要，必须显式调用 `$requirements-to-roadmap`。
+
+现有三个工作流技能保持不变，且均为仅显式调用：它们不会自动串联。一个阶段完成并由人工确认交接后，再调用下一个技能。
 
 ## 技能与依赖
 
@@ -28,6 +31,7 @@ flowchart LR
 | [git-commit-convention](./skills/git-commit-convention/) | 让本地提交保持需求范围清晰、关联文档完整，并遵循中文提交信息格式。 | 独立使用。需要 Git 仓库；提交时需要 issue 编号。 |
 | [coding-guidelines](./skills/coding-guidelines/) | 编码与审阅时避免推测性抽象、范围蔓延、不安全边界和半迁移。 | 实现与审阅的基线。`spec-plan-to-code` **必须依赖**。 |
 | [concurrent-design-review](./skills/concurrent-design-review/) | 对并发、锁、生命周期和共享可变状态做独立设计审阅。 | 由 `spec-review-gate` **按条件调用**；调用方不得预先派发竞争性 reviewer。 |
+| [requirement-council](./skills/requirement-council/) | 用四个只读角色探讨一行或多行功能需求文本，并给出有证据支持、供人工决策的方向。 | **可选，仅 Codex** 的预工作流阶段。它不会自动启动或交接给现有工作流；人工选择后，如有需要显式调用 `$requirements-to-roadmap`。 |
 | [requirements-to-roadmap](./skills/requirements-to-roadmap/) | 定位现状、讨论范围并产出包含 `REQ-*`、`DEC-*`、`AC-*` 与 Phase ID 的确认 roadmap。 | 可选使用 `brainstorming` 与 `grilling`；缺失任一技能时使用内置等价方法。确认后的 Phase ID 交给 `roadmap-to-spec-plan`。 |
 | [roadmap-to-spec-plan](./skills/roadmap-to-spec-plan/) | 将一个已确认 roadmap 阶段转为决策包、Spec、可执行 Plan、验收矩阵和审阅台账。 | **必须依赖**确认后的 roadmap / Phase ID。存在并发或生命周期风险时，在写 Plan 前使用 `spec-review-gate`。终审顺序是 Astra，之后可选 Cursor。已批准产物交给 `spec-plan-to-code`。 |
 | [spec-review-gate](./skills/spec-review-gate/) | 判断 Spec 是否包含并发、生命周期、共享状态等需要专项门禁的风险。 | 红色风险时**必须依赖** `concurrent-design-review`。它是专项门禁，不替代一般设计审阅。 |
@@ -49,6 +53,9 @@ flowchart LR
 | `~/.cursor-review/API_KEY` 中的 Cursor API key | 仅在调用仓库自带 Cursor 审阅脚本时需要。不得将 key 写入仓库或提示词。 |
 | `brainstorming`、`grilling` 技能 | 推荐用于更深入的需求讨论；缺失时 `requirements-to-roadmap` 会安全降级。 |
 | 已配置的审阅模型 | 工作流引用 Astra 等独立审阅模型；宿主运行时需要提供等价且已授权的审阅能力。 |
+| Requirement Council（仅 Codex） | 需要将四个自定义 Agent TOML 全局安装到 Codex，并请求精确配置 `gpt-5.6-sol` / `high` / `read-only`。模型可用性，以及实际生效的模型、思考强度、沙箱与子 Agent 隔离均取决于宿主；请求配置并非不可变的运行时保证。 |
+
+Requirement Council 的运行有轮次上限；宿主无法确认所需能力，或无法保留/重建四个角色时，结果可能不完整。宿主未证明时，只读行为与结果属于协议约束或事后观察；对话记录不是完整、不可变的审计档案。
 
 ## 安装
 
@@ -68,6 +75,41 @@ ln -s "$(pwd)/skills/requirements-to-roadmap" ~/.codex/skills/requirements-to-ro
 ```
 
 对其他所需技能重复操作。工作流技能保持仅显式调用，例如 `$requirements-to-roadmap`。
+
+#### Requirement Council（个人 Codex 安装）
+
+Requirement Council 使用个人 Codex Agent，而不是项目级 Agent。必须完成以下两个安装步骤：
+
+1. 将 `skills/requirement-council` 复制或链接到 `~/.codex/skills/requirement-council`。
+2. 将 `skills/requirement-council/agents/` 中全部四个独立 Agent TOML 复制到 `~/.codex/agents/`：
+   - `requirement-council-user-value-explorer.toml`
+   - `requirement-council-minimal-delivery-architect.toml`
+   - `requirement-council-risk-counterexample-critic.toml`
+   - `requirement-council-contrarian-reframer.toml`
+
+例如，在仓库根目录执行：
+
+```bash
+mkdir -p ~/.codex/skills ~/.codex/agents
+ln -s "$(pwd)/skills/requirement-council" ~/.codex/skills/requirement-council
+cp skills/requirement-council/agents/requirement-council-user-value-explorer.toml ~/.codex/agents/requirement-council-user-value-explorer.toml
+cp skills/requirement-council/agents/requirement-council-minimal-delivery-architect.toml ~/.codex/agents/requirement-council-minimal-delivery-architect.toml
+cp skills/requirement-council/agents/requirement-council-risk-counterexample-critic.toml ~/.codex/agents/requirement-council-risk-counterexample-critic.toml
+cp skills/requirement-council/agents/requirement-council-contrarian-reframer.toml ~/.codex/agents/requirement-council-contrarian-reframer.toml
+```
+
+安装或更新 Agent TOML 后，请启动一个全新的 Codex 会话，让个人 Agent 发现机制重新加载这些文件。
+
+请使用非空需求文本显式调用。文本可以是一行或多行，不需要 issue 编号：
+
+```text
+$requirement-council
+客服人员需要保存常用筛选条件，并在之后快速重新打开。
+初步设想是个人筛选列表；是否支持团队共享尚未确定。
+现有权限必须继续控制用户能够看到哪些记录。
+```
+
+此 Skill 有意不包含在 Claude Code plugin 中。四个 Agent 不会通过 `.codex-plugin/plugin.json` 全局安装；请按以上两个个人 Codex 步骤安装。Council 运行绝不会自动调用或交接给其他 Skill。
 
 ### Cursor 审阅配置（可选）
 
