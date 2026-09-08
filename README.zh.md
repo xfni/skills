@@ -1,77 +1,77 @@
 # AI-Native Coding Skills
 
-一套同时适用于 Claude Code 与 Codex 的共享技能，用于保持高质量、一致性的开发工作流。
+一组小而明确、跨运行时复用的技能：将有边界的需求推进到可验证代码，同时避免 Agent 把简单改动写成框架。支持 Claude Code、Codex，以及可选的 Cursor 只读审阅。
 
 [English](./README.md) | 简体中文
 
-## 技能列表
+## 从这里开始
 
-| 技能 | 说明 |
-|------|------|
-| [git-commit-convention](./skills/git-commit-convention/) | 强制执行结构化 commit 格式：第一行 `前缀(ISSUE): 摘要`，正文使用类型序号条目（`feat1:`、`fix1:` 等），并严格限制文件提交范围 |
-| [coding-guidelines](./skills/coding-guidelines/) | 编码行为准则：简洁、外科手术式修改、证据驱动抽象、模块边界与按风险可靠性 |
-| [concurrent-design-review](./skills/concurrent-design-review/) | 并发、生命周期与共享状态设计的独立双视角评审：同时核查真实代码路径与系统失败模式 |
-| [requirements-to-roadmap](./skills/requirements-to-roadmap/) | 显式调用的需求设计工作流：定位、讨论、质询并冻结有边界的需求路线图 |
-| [roadmap-to-spec-plan](./skills/roadmap-to-spec-plan/) | 显式调用的设计工作流：将确认的 roadmap 转为经审阅的决策包、Spec 和可执行 Plan |
-| [spec-review-gate](./skills/spec-review-gate/) | 写 Plan 前的风险门禁：识别并发与生命周期设计，并调用专项评审工作流 |
-| [spec-plan-to-code](./skills/spec-plan-to-code/) | 显式调用的开发工作流：按变更类型验证，实现已批准的 Spec 和 Plan 并保留证据 |
+仅在你明确需要完整的决策、审阅与证据链时，显式调用 AI-native 工作流：
 
-## 在 Claude Code 中安装
-
-**第一步 — 添加 marketplace：**
-
+```mermaid
+flowchart LR
+    R["$requirements-to-roadmap"] --> S["$roadmap-to-spec-plan"] --> C["$spec-plan-to-code"]
+    R -. 可选讨论方法 .-> B["brainstorming + grilling"]
+    S -. 命中并发/生命周期风险 .-> G["$spec-review-gate"]
+    G --> D["$concurrent-design-review"]
+    C --> CG["coding-guidelines"]
+    S -. 可选只读终审 .-> CU["Cursor"]
+    C -. 可选只读终审 .-> CU
 ```
+
+三个工作流技能均为仅显式调用：它们不会自动串联。一个阶段完成并由人工确认交接后，再调用下一个技能。
+
+## 技能与依赖
+
+| 技能 | 解决什么问题 | 依赖与交接 |
+|---|---|---|
+| [git-commit-convention](./skills/git-commit-convention/) | 让本地提交保持需求范围清晰、关联文档完整，并遵循中文提交信息格式。 | 独立使用。需要 Git 仓库；提交时需要 issue 编号。 |
+| [coding-guidelines](./skills/coding-guidelines/) | 编码与审阅时避免推测性抽象、范围蔓延、不安全边界和半迁移。 | 实现与审阅的基线。`spec-plan-to-code` **必须依赖**。 |
+| [concurrent-design-review](./skills/concurrent-design-review/) | 对并发、锁、生命周期和共享可变状态做独立设计审阅。 | 由 `spec-review-gate` **按条件调用**；调用方不得预先派发竞争性 reviewer。 |
+| [requirements-to-roadmap](./skills/requirements-to-roadmap/) | 定位现状、讨论范围并产出包含 `REQ-*`、`DEC-*`、`AC-*` 与 Phase ID 的确认 roadmap。 | 可选使用 `brainstorming` 与 `grilling`；缺失任一技能时使用内置等价方法。确认后的 Phase ID 交给 `roadmap-to-spec-plan`。 |
+| [roadmap-to-spec-plan](./skills/roadmap-to-spec-plan/) | 将一个已确认 roadmap 阶段转为决策包、Spec、可执行 Plan、验收矩阵和审阅台账。 | **必须依赖**确认后的 roadmap / Phase ID。存在并发或生命周期风险时，在写 Plan 前使用 `spec-review-gate`。终审顺序是 Astra，之后可选 Cursor。已批准产物交给 `spec-plan-to-code`。 |
+| [spec-review-gate](./skills/spec-review-gate/) | 判断 Spec 是否包含并发、生命周期、共享状态等需要专项门禁的风险。 | 红色风险时**必须依赖** `concurrent-design-review`。它是专项门禁，不替代一般设计审阅。 |
+| [spec-plan-to-code](./skills/spec-plan-to-code/) | 依据已批准决策包、Spec 和 Plan 实现代码，并保留按变更类型选择的测试、独立审阅、探针、运行时验证与证据。 | **必须依赖** `roadmap-to-spec-plan` 的批准产物和 `coding-guidelines`。Astra 终审后可选 Cursor 作为最后的外部只读审阅。 |
+
+依赖术语：
+
+- **必须依赖**：没有前置产物或技能时不得开始。
+- **按条件调用**：仅在触发条件成立时使用。
+- **可选**：能提高讨论或覆盖质量，但技能已提供明确降级路径。
+
+## 运行环境与外部能力
+
+| 运行时或能力 | 用于 |
+|---|---|
+| [Claude Code](https://claude.ai/code)（支持 plugin） | 将本仓库安装为 Claude Code 插件。 |
+| [Codex](https://openai.com/codex/) | 将选定技能安装或链接到 `~/.codex/skills/`。仓库提供仅显式调用的工作流元数据。 |
+| [Cursor](https://cursor.com/) 与可导入 `cursor_sdk` 的 Python 环境 | `roadmap-to-spec-plan`、`spec-plan-to-code` 的可选外部只读审阅；正常工作流不依赖 Cursor。 |
+| `~/.cursor-review/API_KEY` 中的 Cursor API key | 仅在调用仓库自带 Cursor 审阅脚本时需要。不得将 key 写入仓库或提示词。 |
+| `brainstorming`、`grilling` 技能 | 推荐用于更深入的需求讨论；缺失时 `requirements-to-roadmap` 会安全降级。 |
+| 已配置的审阅模型 | 工作流引用 Astra 等独立审阅模型；宿主运行时需要提供等价且已授权的审阅能力。 |
+
+## 安装
+
+### Claude Code
+
+```text
 /plugins add-marketplace github:xfni/skills
-```
-
-**第二步 — 安装插件：**
-
-```
 /plugins install nixiaofeng-skills@nixiaofeng-skills
 ```
 
-安装完成后，全部八个技能即可在所有项目中直接调用；其中三个 AI-native 工作流仅在显式调用时启用。
+### Codex
 
-## 在 Codex 中使用
+仓库通过 `.codex-plugin/plugin.json` 暴露共享的 `skills/` 目录。市场条目发布前，可 clone 本仓库，将所需技能复制或链接到 `~/.codex/skills/`：
 
-同一份源文件已通过 `.codex-plugin/plugin.json` 打包。当前仓库尚未发布 Codex marketplace 条目时，可先 clone 本仓库，再将 `skills/` 下所需目录复制或链接至 `~/.codex/skills/`。三个 AI-native 工作流仍通过 `agents/openai.yaml` 保持仅显式调用。
-
-## 技能详解
-
-### git-commit-convention
-
-在每次 `git commit` 前强制执行规范化的提交格式：
-
-```
-feat(BCS-448): 将 ask-user 重构为三通道架构
-
-feat1: 将原单通道 ask-user 拆分为 CLI、HTTP、SDK 三通道入口
-fix1: 修复 HTTP 通道在空 body 时返回 500 的问题
+```bash
+ln -s "$(pwd)/skills/requirements-to-roadmap" ~/.codex/skills/requirements-to-roadmap
 ```
 
-强制规则：
-- 第一行标题必须包含 issue 编号
-- 正文至少一条类型序号条目（`feat1:`、`fix1:`、`refactor1:` 等）
-- `.ai/` 和 `docs/` 下的关联文档必须与代码同批提交
-- 禁止在开发过程中自行提交，必须先询问用户
+对其他所需技能重复操作。工作流技能保持仅显式调用，例如 `$requirements-to-roadmap`。
 
-### coding-guidelines
+### Cursor 审阅配置（可选）
 
-减少 LLM 常见编码失误的六条行为准则：
-
-| 准则 | 针对问题 |
-|------|----------|
-| **编码前先思考** | 错误假设、隐藏困惑、缺失权衡 |
-| **简洁优先** | 过度复杂、臃肿抽象、推测性功能 |
-| **外科手术式修改** | 无关改动、触碰任务范围外的代码 |
-| **目标驱动执行** | 可验证的成功标准、测试优先循环 |
-| **证据驱动抽象** | 没有当前消费者或变体支撑的框架化分层 |
-| **模块边界与迁移** | 协调层吞入子系统行为、跨模块契约松散、迁移半途而废 |
-| **可靠性边界** | 不可信输入、可执行接口、资源、隐私与并发风险 |
-
-## 环境要求
-
-- [Claude Code](https://claude.ai/code)（需支持 plugin 功能）
+两个工作流技能内置受限、只读的 `cursor_review.py`。配置 Cursor 与 `cursor_sdk` bridge，在 Cursor 中生成 API key，并仅将 key 保存到 `~/.cursor-review/API_KEY`。脚本默认使用 `grok-4.6` 和 `high` 思考强度，且不会给 Cursor 写文件或 shell 权限。
 
 ## 开源协议
 

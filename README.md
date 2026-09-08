@@ -1,77 +1,77 @@
 # AI-Native Coding Skills
 
-A collection of shared skills for Claude Code and Codex, focused on consistent, high-quality software development workflows.
+A small, cross-runtime skill set for moving from a bounded requirement to verified code without turning agents into framework generators. It supports Claude Code, Codex, and an optional read-only Cursor review step.
 
 English | [简体中文](./README.zh.md)
 
-## Skills
+## Start here
 
-| Skill | Description |
-|-------|-------------|
-| [git-commit-convention](./skills/git-commit-convention/) | Enforces a structured Chinese commit format: `prefix(ISSUE): summary` on the first line, typed body entries (`feat1:`, `fix1:`, ...), and strict file-scope rules |
-| [coding-guidelines](./skills/coding-guidelines/) | Coding principles for simple, surgical, evidence-driven implementation, including reliability, module boundaries, and complete migrations |
-| [concurrent-design-review](./skills/concurrent-design-review/) | Independent two-perspective review for concurrent, lifecycle, and shared-state designs, including code-path reality and system failure modes |
-| [requirements-to-roadmap](./skills/requirements-to-roadmap/) | Explicit-only workflow for investigating, discussing, stress-testing, and freezing a bounded requirement roadmap |
-| [roadmap-to-spec-plan](./skills/roadmap-to-spec-plan/) | Explicit-only workflow for turning a confirmed roadmap into reviewed decision, specification, and executable plan artifacts |
-| [spec-review-gate](./skills/spec-review-gate/) | Risk gate before planning that identifies concurrency and lifecycle designs and invokes the specialist review workflow |
-| [spec-plan-to-code](./skills/spec-plan-to-code/) | Explicit-only workflow for implementing an approved plan with type-appropriate validation and evidence |
+Use the AI-native workflow only when you explicitly want its full decision and review trail:
 
-## Install in Claude Code
-
-**Step 1 — Add this marketplace:**
-
+```mermaid
+flowchart LR
+    R["$requirements-to-roadmap"] --> S["$roadmap-to-spec-plan"] --> C["$spec-plan-to-code"]
+    R -. optional discussion methods .-> B["brainstorming + grilling"]
+    S -. concurrency/lifecycle risk .-> G["$spec-review-gate"]
+    G --> D["$concurrent-design-review"]
+    C --> CG["coding-guidelines"]
+    S -. optional read-only final review .-> CU["Cursor"]
+    C -. optional read-only final review .-> CU
 ```
+
+The three workflow skills are explicit-only. They do not start each other automatically: finish and confirm one handoff before invoking the next.
+
+## Skills and dependencies
+
+| Skill | Use it for | Dependencies and handoff |
+|---|---|---|
+| [git-commit-convention](./skills/git-commit-convention/) | Keeping a local commit scoped, documented, and in the required Chinese commit format. | Independent. Requires a Git repository and an issue identifier for a commit. |
+| [coding-guidelines](./skills/coding-guidelines/) | Writing or reviewing code without speculative abstractions, scope creep, unsafe boundaries, or half-finished migrations. | Baseline for implementation and review. **Required** by `spec-plan-to-code`. |
+| [concurrent-design-review](./skills/concurrent-design-review/) | Independent design review of concurrency, locks, lifecycle, or shared mutable state. | **Conditionally invoked** by `spec-review-gate`; do not pre-assign competing reviewers. |
+| [requirements-to-roadmap](./skills/requirements-to-roadmap/) | Investigating a request, deciding scope, and producing a confirmed roadmap with `REQ-*`, `DEC-*`, `AC-*`, and Phase IDs. | Optional methods: `brainstorming` and `grilling`. It falls back to an equivalent in-skill method when either is unavailable. Its confirmed Phase ID is the input to `roadmap-to-spec-plan`. |
+| [roadmap-to-spec-plan](./skills/roadmap-to-spec-plan/) | Turning one confirmed roadmap phase into a Decision Package, Spec, executable Plan, acceptance matrix, and review ledger. | **Requires** a confirmed roadmap/Phase ID. Use `spec-review-gate` before Plan creation when concurrency or lifecycle risk is present. Uses Astra, then optionally Cursor, for independent final review. Its approved artifacts are the input to `spec-plan-to-code`. |
+| [spec-review-gate](./skills/spec-review-gate/) | Deciding whether a Spec has concurrency, lifecycle, shared-state, or related risk that needs a specialist gate. | **Requires** `concurrent-design-review` for red-risk cases. It is a gate, not a general design-review replacement. |
+| [spec-plan-to-code](./skills/spec-plan-to-code/) | Implementing an approved Decision Package, Spec, and Plan with change-type-appropriate tests, independent reviews, probes, runtime checks, and evidence. | **Requires** approved artifacts from `roadmap-to-spec-plan` and `coding-guidelines`. May use Cursor as the final external read-only review after Astra. |
+
+Dependency terms:
+
+- **Requires**: do not begin without the listed input or skill.
+- **Conditionally invoked**: use only when its trigger is present.
+- **Optional**: improves coverage or interaction quality but has a stated fallback.
+
+## Runtime requirements
+
+| Runtime or capability | Needed for |
+|---|---|
+| [Claude Code](https://claude.ai/code) with plugin support | Installing this repository as a Claude Code plugin. |
+| [Codex](https://openai.com/codex/) | Installing or linking selected directories into `~/.codex/skills/`. Explicit-only workflow metadata is included. |
+| [Cursor](https://cursor.com/) plus a Python environment where `cursor_sdk` is available | Optional external read-only review in `roadmap-to-spec-plan` and `spec-plan-to-code`. Not needed for the normal workflow. |
+| Cursor API key at `~/.cursor-review/API_KEY` | Only when invoking the supplied Cursor review scripts. Keep the key out of repositories and prompts. |
+| `brainstorming` and `grilling` skills | Optional, recommended for richer requirement discussion. `requirements-to-roadmap` degrades safely when they are absent. |
+| Configured reviewer models | The workflow references Astra and other independent-review models. Make equivalent authorized reviewer capacity available in the host runtime. |
+
+## Install
+
+### Claude Code
+
+```text
 /plugins add-marketplace github:xfni/skills
-```
-
-**Step 2 — Install the plugin:**
-
-```
 /plugins install nixiaofeng-skills@nixiaofeng-skills
 ```
 
-All eight skills are available immediately across every project. The three AI-native workflow skills activate only when explicitly invoked.
+### Codex
 
-## Use in Codex
+The repository exposes the shared `skills/` directory through `.codex-plugin/plugin.json`. Until a marketplace entry is available, clone this repository and copy or link the skills you want into `~/.codex/skills/`.
 
-The same source files are packaged through `.codex-plugin/plugin.json`. Until this repository publishes a Codex marketplace entry, clone it and copy or link the desired directories from `skills/` into `~/.codex/skills/`. The three AI-native workflow skills remain explicit-only through their `agents/openai.yaml` metadata.
-
-## Skill Overview
-
-### git-commit-convention
-
-Enforces a mandatory commit format before every `git commit`:
-
-```
-feat(BCS-448): redesign ask-user as three-channel architecture
-
-feat1: split original single-channel ask-user into CLI, HTTP, and SDK entry points
-fix1: fix HTTP channel returning 500 on empty request body
+```bash
+ln -s "$(pwd)/skills/requirements-to-roadmap" ~/.codex/skills/requirements-to-roadmap
 ```
 
-Rules enforced:
-- Issue number required in the first line title
-- At least one typed body entry (`feat1:`, `fix1:`, `refactor1:`, ...)
-- Related docs under `.ai/` and `docs/` must be committed in the same batch
-- Never commit mid-development; always ask the user first
+Repeat for each desired skill. Keep the workflow skills explicit-only; invoke them by name, for example `$requirements-to-roadmap`.
 
-### coding-guidelines
+### Cursor review setup (optional)
 
-Six principles to reduce common LLM coding mistakes:
-
-| Principle | Addresses |
-|-----------|-----------|
-| **Think Before Coding** | Wrong assumptions, hidden confusion, missing tradeoffs |
-| **Simplicity First** | Overcomplication, bloated abstractions, speculative features |
-| **Surgical Changes** | Orthogonal edits, touching code outside the task scope |
-| **Goal-Driven Execution** | Verifiable success criteria, test-first loops |
-| **Evidence-Driven Abstraction** | Framework-like layers without current consumers or variation |
-| **Module Boundaries and Migrations** | Coordinators absorbing subsystem behavior, loose cross-module contracts, and half-finished migrations |
-| **Reliability Boundaries** | Untrusted input, executable interfaces, resources, privacy, and concurrency risks |
-
-## Requirements
-
-- [Claude Code](https://claude.ai/code) with plugin support
+The two workflow skills include a bounded, read-only `cursor_review.py`. Configure Cursor and the `cursor_sdk` bridge, generate an API key in Cursor, then save only that key in `~/.cursor-review/API_KEY`. The scripts default to `grok-4.6` with `high` effort and never grant Cursor write or shell tools.
 
 ## License
 
