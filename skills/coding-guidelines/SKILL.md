@@ -48,7 +48,15 @@ Before adding an abstraction, write an abstraction receipt: current repetition, 
 
 Ask whether each new layer has an abstraction receipt, whether direct calls to existing domain services would make the business order clearer, and whether configuration, extension points, registries, base classes, or generic containers have a current consumer. Classify unsupported frameworking as `Over-abstraction / Premature platformization`; recommend inlining it unless current evidence exists. Readable sequencing is often the correct design.
 
-## 3. Reliability Boundaries
+## 3. Module Boundaries and Migrations
+
+A coordinator should only orchestrate: order the current business steps, call named domain services, and assemble the result. Keep a subsystem's state machine, retries, normalization, and specialized output handling with that subsystem when it is a meaningful module boundary. Do not create a facade or a new object merely because a small local flow has several calls.
+
+At a meaningful module boundary, use the project's established typed contract or explicit data model rather than a loose bag of implementation details. A contract or integration test is appropriate when callers and implementations need to remain independently compatible; it is not required for a purely local refactor.
+
+Complete the migration or defer it. Do not introduce a new contract while leaving long-lived adapters, duplicate paths, or ambiguous ownership. If compatibility is genuinely required, name its removal condition and verify the old and new behavior at the boundary.
+
+## 4. Reliability Boundaries
 
 Use risk-based reliability boundaries, not a universal style checklist. Identify the actual boundary before adding validation, error handling, wrapping, logging, or a new type.
 
@@ -62,7 +70,7 @@ Function length, parameter count, nesting, broad dynamic payloads, and repeated 
 
 For shared mutable state, ownership transfer, lock ordering, cancellation, background lifecycle, or cross-thread/async boundaries, invoke `concurrent-design-review`. This guideline does not replace its independent review and coverage decision.
 
-## 4. Surgical Changes
+## 5. Surgical Changes
 
 **Touch only what you must. Clean up only your own mess.**
 
@@ -78,7 +86,7 @@ When your changes create orphans:
 
 The test: Every changed line should trace directly to the user's request.
 
-## 5. Goal-Driven Execution
+## 6. Goal-Driven Execution
 
 **Define success criteria. Loop until verified.**
 

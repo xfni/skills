@@ -9,8 +9,7 @@
 | 技能 | 说明 |
 |------|------|
 | [git-commit-convention](./skills/git-commit-convention/) | 强制执行结构化 commit 格式：第一行 `前缀(ISSUE): 摘要`，正文使用类型序号条目（`feat1:`、`fix1:` 等），并严格限制文件提交范围 |
-| [coding-guidelines](./skills/coding-guidelines/) | 编码行为准则：简洁、外科手术式修改、证据驱动抽象与按风险的可靠性边界 |
-| [backend-module-discipline](./skills/backend-module-discipline/) | 后端模块纪律：协调层只调度、子系统单入口、类型对象跨边界、枚举优先、对称代码立刻抽、半迁移不过夜、体量红线 |
+| [coding-guidelines](./skills/coding-guidelines/) | 编码行为准则：简洁、外科手术式修改、证据驱动抽象、模块边界与按风险可靠性 |
 | [concurrent-design-review](./skills/concurrent-design-review/) | 并发、生命周期与共享状态设计的独立双视角评审：同时核查真实代码路径与系统失败模式 |
 | [requirements-to-roadmap](./skills/requirements-to-roadmap/) | 显式调用的需求设计工作流：定位、讨论、质询并冻结有边界的需求路线图 |
 | [roadmap-to-spec-plan](./skills/roadmap-to-spec-plan/) | 显式调用的设计工作流：将确认的 roadmap 转为经审阅的决策包、Spec 和可执行 Plan |
@@ -31,7 +30,7 @@
 /plugins install nixiaofeng-skills@nixiaofeng-skills
 ```
 
-安装完成后，全部九个技能即可在所有项目中直接调用；其中三个 AI-native 工作流仅在显式调用时启用。
+安装完成后，全部八个技能即可在所有项目中直接调用；其中三个 AI-native 工作流仅在显式调用时启用。
 
 ## 在 Codex 中使用
 
@@ -58,7 +57,7 @@ fix1: 修复 HTTP 通道在空 body 时返回 500 的问题
 
 ### coding-guidelines
 
-减少 LLM 常见编码失误的五条行为准则：
+减少 LLM 常见编码失误的六条行为准则：
 
 | 准则 | 针对问题 |
 |------|----------|
@@ -67,22 +66,8 @@ fix1: 修复 HTTP 通道在空 body 时返回 500 的问题
 | **外科手术式修改** | 无关改动、触碰任务范围外的代码 |
 | **目标驱动执行** | 可验证的成功标准、测试优先循环 |
 | **证据驱动抽象** | 没有当前消费者或变体支撑的框架化分层 |
+| **模块边界与迁移** | 协调层吞入子系统行为、跨模块契约松散、迁移半途而废 |
 | **可靠性边界** | 不可信输入、可执行接口、资源、隐私与并发风险 |
-
-### backend-module-discipline
-
-复杂后端服务防止架构腐化的六项纪律，来源于两次大规模重构的复盘：
-
-| 纪律 | 防止什么 |
-|------|----------|
-| **协调层只调度** | 编排器承担子系统状态机和细节 |
-| **子系统单入口** | 协调层直调内部方法，绕过门面 |
-| **类型对象跨边界** | 裸 dict + 魔法字符串契约 |
-| **枚举优先** | 平行布尔组 + 大小写混用字符串 |
-| **对称代码立刻抽** | 两处镜像流程漂移 |
-| **半迁移不过夜** | 兼容代理长期存活演变成永久债务 |
-
-附体量红线（文件 ~800 行、方法 ~80 行、出口 ≤ 3）和七项 PR 评审清单。
 
 ## 环境要求
 

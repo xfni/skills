@@ -10,7 +10,6 @@
   "skills": [
     "./skills/git-commit-convention",
     "./skills/coding-guidelines",
-    "./skills/backend-module-discipline",
     "./skills/concurrent-design-review",
     "./skills/requirements-to-roadmap",
     "./skills/roadmap-to-spec-plan",

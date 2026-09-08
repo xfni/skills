@@ -119,6 +119,7 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
 
     def test_karpathy_guidelines_require_evidence_for_abstractions(self):
         text = (SKILLS_ROOT / "coding-guidelines" / "SKILL.md").read_text().lower()
+        manifest = (ROOT / ".claude-plugin" / "plugin.json").read_text()
         required = (
             "evidence-driven abstraction",
             "local, explicit, linear orchestration",
@@ -126,9 +127,15 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
             "future flexibility is not evidence",
             "pipeline, context, registry, executor, manager, or factory",
             "abstraction receipt",
+            "coordinator should only orchestrate",
+            "meaningful module boundary",
+            "complete the migration or defer it",
+            "contract or integration test",
         )
         for value in required:
             self.assertIn(value, text)
+        self.assertNotIn('"./skills/backend-module-discipline"', manifest)
+        self.assertFalse((SKILLS_ROOT / "backend-module-discipline").exists())
 
     def test_coding_guidelines_is_registered_and_required_for_implementation(self):
         manifest = (ROOT / ".claude-plugin" / "plugin.json").read_text()
