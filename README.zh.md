@@ -14,8 +14,10 @@
 | [coding-observability-errors](./skills/coding-observability-errors/) | 日志与异常治理：入口/出口埋点、标准化错误码、资源释放、超时要求、错误传播策略 |
 | [coding-guidelines](./skills/coding-guidelines/) | 编码行为准则：简洁、外科手术式修改、证据驱动抽象，避免推测性平台化 |
 | [backend-module-discipline](./skills/backend-module-discipline/) | 后端模块纪律：协调层只调度、子系统单入口、类型对象跨边界、枚举优先、对称代码立刻抽、半迁移不过夜、体量红线 |
+| [concurrent-design-review](./skills/concurrent-design-review/) | 并发、生命周期与共享状态设计的独立双视角评审：同时核查真实代码路径与系统失败模式 |
 | [requirements-to-roadmap](./skills/requirements-to-roadmap/) | 显式调用的需求设计工作流：定位、讨论、质询并冻结有边界的需求路线图 |
 | [roadmap-to-spec-plan](./skills/roadmap-to-spec-plan/) | 显式调用的设计工作流：将确认的 roadmap 转为经审阅的决策包、Spec 和可执行 Plan |
+| [spec-review-gate](./skills/spec-review-gate/) | 写 Plan 前的风险门禁：识别并发与生命周期设计，并调用专项评审工作流 |
 | [spec-plan-to-code](./skills/spec-plan-to-code/) | 显式调用的开发工作流：按变更类型验证，实现已批准的 Spec 和 Plan 并保留证据 |
 
 ## 在 Claude Code 中安装
@@ -38,7 +40,7 @@
 /init-claude
 ```
 
-安装完成后，全部九个技能即可在所有项目中直接调用；其中三个 AI-native 工作流仅在显式调用时启用。
+安装完成后，全部十一个技能即可在所有项目中直接调用；其中三个 AI-native 工作流仅在显式调用时启用。
 
 ## 在 Codex 中使用
 
