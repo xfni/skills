@@ -9,6 +9,8 @@ Use this explicit-only workflow to implement an approved Decision Package, Spec,
 
 **REQUIRED SUB-SKILL:** Use `coding-guidelines` before writing implementation code and when reviewing any change. Its evidence-driven abstraction rule governs whether a direct local orchestration or a new layer is appropriate; no reviewer may turn speculative platformization into a requirement.
 
+**REQUIRED SUB-SKILL:** Every independent review in this workflow must use `independent-review` with the `implementation` profile, or the `concurrency` profile when the changed boundary has shared state, locks, async/cross-thread execution, cancellation, or lifecycle risk. This workflow—not `independent-review`—selects `subagent` versus `cursor`, model, and effort.
+
 ## Hold the baseline and record progress
 
 Confirm the worktree, approved artifact versions, selected Phase ID, task and acceptance IDs, existing user changes, authorization, and test environment before editing. Preserve the approved scope. Record any new public interface, compatibility, data-policy, or capability request as a Scope Delta; seek approval or defer it. Do not treat reviewer agreement as human approval.
@@ -25,7 +27,7 @@ For pure configuration, generated files, deployment descriptions, and documents,
 
 The primary agent's self-check does not count as independent review. After completing implementation and primary validation, review each independent Task and each completed milestone with an independent read-only reviewer. A Task or milestone cannot be marked done until its findings are resolved or evidenced as invalid, affected validation is rerun, and the changed boundary is independently re-reviewed.
 
-Route Task and milestone reviewers by the highest applicable complexity:
+Route Task and milestone reviewers through `independent-review` with `backend: subagent` by the highest applicable complexity:
 
 - Ordinary work with explicit behavior, local impact, and focused verification: use `gpt-5.5-sol` with `high`.
 - Difficult work involving non-local control or data flow, multiple modules, compatibility, state, cache, retry behavior, or multi-step verification: use `gpt-5.5-sol` with `xhigh`.
@@ -37,7 +39,7 @@ Provide the frozen Spec and Plan, Task or milestone boundary, changed version, l
 
 ## Final review and runtime evidence
 
-After all Task and milestone reviews complete, use this fixed final-review order: First use `gpt-6-astra` with `medium` effort for the independent final review. Only after its findings are resolved or dispositioned, use Cursor as the last external review. Astra checks decision → Spec → Plan → code → evidence consistency; Cursor checks correctness, non-local flows, compatibility, errors, tests, and regressions. Final review complements rather than replaces the required Task and milestone reviews. Re-run affected validation after every accepted fix and independently re-review the changed boundary. Do not reverse the order or treat Cursor feedback as permission to expand the approved scope.
+After all Task and milestone reviews complete, use this fixed final-review order through `independent-review` with the `implementation` profile: first `backend: subagent`, `gpt-6-astra`, `medium`; only after its findings are resolved or dispositioned, `backend: cursor`, `grok-4.6`, `high` as the last external review. Astra checks decision → Spec → Plan → code → evidence consistency; Cursor checks correctness, non-local flows, compatibility, errors, tests, and regressions. Final review complements rather than replaces the required Task and milestone reviews. Re-run affected validation after every accepted fix and independently re-review the changed boundary. Do not reverse the order or treat Cursor feedback as permission to expand the approved scope.
 
 If Cursor findings cause a code or behavior revision, rerun affected validation, independently re-review the changed boundary, then return to the Astra → Cursor final-review sequence. Cursor is final only when its last review causes no further revision.
 

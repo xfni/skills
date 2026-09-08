@@ -12,8 +12,8 @@
 flowchart LR
     R["$requirements-to-roadmap"] --> S["$roadmap-to-spec-plan"] --> C["$spec-plan-to-code"]
     R -. 可选讨论方法 .-> B["brainstorming + grilling"]
-    S -. 命中并发/生命周期风险 .-> G["$spec-review-gate"]
-    G --> D["$concurrent-design-review"]
+    S -. 选择评审 profile .-> I["$independent-review"]
+    C -. 选择评审 profile .-> I
     C --> CG["coding-guidelines"]
     S -. 可选只读终审 .-> CU["Cursor"]
     C -. 可选只读终审 .-> CU
@@ -27,11 +27,10 @@ flowchart LR
 |---|---|---|
 | [git-commit-convention](./skills/git-commit-convention/) | 让本地提交保持需求范围清晰、关联文档完整，并遵循中文提交信息格式。 | 独立使用。需要 Git 仓库；提交时需要 issue 编号。 |
 | [coding-guidelines](./skills/coding-guidelines/) | 编码与审阅时避免推测性抽象、范围蔓延、不安全边界和半迁移。 | 实现与审阅的基线。`spec-plan-to-code` **必须依赖**。 |
-| [concurrent-design-review](./skills/concurrent-design-review/) | 对并发、锁、生命周期和共享可变状态做独立设计审阅。 | 由 `spec-review-gate` **按条件调用**；调用方不得预先派发竞争性 reviewer。 |
+| [independent-review](./skills/independent-review/) | 统一设计、实现和并发 profile 的证据、范围、发现与复审标准。 | 调用方选择 profile、`subagent` 或 `cursor`、模型与思考强度；本技能不做路由决定。 |
 | [requirements-to-roadmap](./skills/requirements-to-roadmap/) | 定位现状、讨论范围并产出包含 `REQ-*`、`DEC-*`、`AC-*` 与 Phase ID 的确认 roadmap。 | 可选使用 `brainstorming` 与 `grilling`；缺失任一技能时使用内置等价方法。确认后的 Phase ID 交给 `roadmap-to-spec-plan`。 |
-| [roadmap-to-spec-plan](./skills/roadmap-to-spec-plan/) | 将一个已确认 roadmap 阶段转为决策包、Spec、可执行 Plan、验收矩阵和审阅台账。 | **必须依赖**确认后的 roadmap / Phase ID。存在并发或生命周期风险时，在写 Plan 前使用 `spec-review-gate`。终审顺序是 Astra，之后可选 Cursor。已批准产物交给 `spec-plan-to-code`。 |
-| [spec-review-gate](./skills/spec-review-gate/) | 判断 Spec 是否包含并发、生命周期、共享状态等需要专项门禁的风险。 | 红色风险时**必须依赖** `concurrent-design-review`。它是专项门禁，不替代一般设计审阅。 |
-| [spec-plan-to-code](./skills/spec-plan-to-code/) | 依据已批准决策包、Spec 和 Plan 实现代码，并保留按变更类型选择的测试、独立审阅、探针、运行时验证与证据。 | **必须依赖** `roadmap-to-spec-plan` 的批准产物和 `coding-guidelines`。Astra 终审后可选 Cursor 作为最后的外部只读审阅。 |
+| [roadmap-to-spec-plan](./skills/roadmap-to-spec-plan/) | 将一个已确认 roadmap 阶段转为决策包、Spec、可执行 Plan、验收矩阵和审阅台账。 | **必须依赖**确认后的 roadmap / Phase ID。调用 `independent-review` 的 `design` 或 `concurrency` profile，并显式选择 Astra 或 Cursor。已批准产物交给 `spec-plan-to-code`。 |
+| [spec-plan-to-code](./skills/spec-plan-to-code/) | 依据已批准决策包、Spec 和 Plan 实现代码，并保留按变更类型选择的测试、独立审阅、探针、运行时验证与证据。 | **必须依赖** `roadmap-to-spec-plan` 的批准产物和 `coding-guidelines`。调用 `independent-review` 的实现/并发 profile，并显式选择 reviewer backend、模型与思考强度。 |
 
 依赖术语：
 

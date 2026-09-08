@@ -10,10 +10,9 @@
   "skills": [
     "./skills/git-commit-convention",
     "./skills/coding-guidelines",
-    "./skills/concurrent-design-review",
+    "./skills/independent-review",
     "./skills/requirements-to-roadmap",
     "./skills/roadmap-to-spec-plan",
-    "./skills/spec-review-gate",
     "./skills/spec-plan-to-code"
   ]
 }

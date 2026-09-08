@@ -12,8 +12,8 @@ Use the AI-native workflow only when you explicitly want its full decision and r
 flowchart LR
     R["$requirements-to-roadmap"] --> S["$roadmap-to-spec-plan"] --> C["$spec-plan-to-code"]
     R -. optional discussion methods .-> B["brainstorming + grilling"]
-    S -. concurrency/lifecycle risk .-> G["$spec-review-gate"]
-    G --> D["$concurrent-design-review"]
+    S -. selected review profile .-> I["$independent-review"]
+    C -. selected review profile .-> I
     C --> CG["coding-guidelines"]
     S -. optional read-only final review .-> CU["Cursor"]
     C -. optional read-only final review .-> CU
@@ -27,11 +27,10 @@ The three workflow skills are explicit-only. They do not start each other automa
 |---|---|---|
 | [git-commit-convention](./skills/git-commit-convention/) | Keeping a local commit scoped, documented, and in the required Chinese commit format. | Independent. Requires a Git repository and an issue identifier for a commit. |
 | [coding-guidelines](./skills/coding-guidelines/) | Writing or reviewing code without speculative abstractions, scope creep, unsafe boundaries, or half-finished migrations. | Baseline for implementation and review. **Required** by `spec-plan-to-code`. |
-| [concurrent-design-review](./skills/concurrent-design-review/) | Independent design review of concurrency, locks, lifecycle, or shared mutable state. | **Conditionally invoked** by `spec-review-gate`; do not pre-assign competing reviewers. |
+| [independent-review](./skills/independent-review/) | Shared evidence, scope, finding, and re-review standard for design, implementation, and concurrency profiles. | The caller selects the profile, `subagent` or `cursor` backend, model, and effort. It never makes those routing decisions. |
 | [requirements-to-roadmap](./skills/requirements-to-roadmap/) | Investigating a request, deciding scope, and producing a confirmed roadmap with `REQ-*`, `DEC-*`, `AC-*`, and Phase IDs. | Optional methods: `brainstorming` and `grilling`. It falls back to an equivalent in-skill method when either is unavailable. Its confirmed Phase ID is the input to `roadmap-to-spec-plan`. |
-| [roadmap-to-spec-plan](./skills/roadmap-to-spec-plan/) | Turning one confirmed roadmap phase into a Decision Package, Spec, executable Plan, acceptance matrix, and review ledger. | **Requires** a confirmed roadmap/Phase ID. Use `spec-review-gate` before Plan creation when concurrency or lifecycle risk is present. Uses Astra, then optionally Cursor, for independent final review. Its approved artifacts are the input to `spec-plan-to-code`. |
-| [spec-review-gate](./skills/spec-review-gate/) | Deciding whether a Spec has concurrency, lifecycle, shared-state, or related risk that needs a specialist gate. | **Requires** `concurrent-design-review` for red-risk cases. It is a gate, not a general design-review replacement. |
-| [spec-plan-to-code](./skills/spec-plan-to-code/) | Implementing an approved Decision Package, Spec, and Plan with change-type-appropriate tests, independent reviews, probes, runtime checks, and evidence. | **Requires** approved artifacts from `roadmap-to-spec-plan` and `coding-guidelines`. May use Cursor as the final external read-only review after Astra. |
+| [roadmap-to-spec-plan](./skills/roadmap-to-spec-plan/) | Turning one confirmed roadmap phase into a Decision Package, Spec, executable Plan, acceptance matrix, and review ledger. | **Requires** a confirmed roadmap/Phase ID. It calls `independent-review` with `design` or `concurrency` profiles and explicitly selects Astra or Cursor. Its approved artifacts are the input to `spec-plan-to-code`. |
+| [spec-plan-to-code](./skills/spec-plan-to-code/) | Implementing an approved Decision Package, Spec, and Plan with change-type-appropriate tests, independent reviews, probes, runtime checks, and evidence. | **Requires** approved artifacts from `roadmap-to-spec-plan` and `coding-guidelines`. It calls `independent-review` with implementation/concurrency profiles and explicitly selects the reviewer backend, model, and effort. |
 
 Dependency terms:
 

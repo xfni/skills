@@ -9,10 +9,7 @@ SKILLS = (
     "roadmap-to-spec-plan",
     "spec-plan-to-code",
 )
-SPECIALIST_SKILLS = (
-    "concurrent-design-review",
-    "spec-review-gate",
-)
+REVIEW_SKILL = "independent-review"
 CURSOR_SKILLS = SKILLS[1:]
 
 
@@ -81,13 +78,13 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
             self.assertIn(value, text)
 
     def test_astra_precedes_cursor_in_final_review_order(self):
-        expected = (
-            "First use `gpt-6-astra` with `medium` effort for the independent final review. "
-            "Only after its findings are resolved or dispositioned, use Cursor as the last external review."
-        )
         for name in ("roadmap-to-spec-plan", "spec-plan-to-code"):
             text = (SKILLS_ROOT / name / "SKILL.md").read_text()
-            self.assertIn(expected, text)
+            self.assertIn("independent-review", text)
+            self.assertIn("backend: subagent", text)
+            self.assertIn("gpt-6-astra", text)
+            self.assertIn("backend: cursor", text)
+            self.assertIn("grok-4.6", text)
 
     def test_workflows_preserve_portable_review_governance(self):
         roadmap = (SKILLS_ROOT / "roadmap-to-spec-plan" / "SKILL.md").read_text()
@@ -155,7 +152,7 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
             "follow the language and repository convention",
             "trusted boundary",
             "review signals, not an automatic extraction rule",
-            "concurrent-design-review",
+            "independent-review",
         ):
             self.assertIn(value, guidelines)
 
@@ -173,21 +170,23 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
         for name in SKILLS:
             self.assertTrue((SKILLS_ROOT / name / "SKILL.md").is_file())
 
-    def test_concurrency_gate_delegates_to_one_specialist_review_authority(self):
+    def test_independent_review_owns_standards_not_reviewer_routing(self):
         manifest = (ROOT / ".claude-plugin" / "plugin.json").read_text()
-        concurrent = (SKILLS_ROOT / "concurrent-design-review" / "SKILL.md").read_text()
-        gate = (SKILLS_ROOT / "spec-review-gate" / "SKILL.md").read_text()
-        for name in SPECIALIST_SKILLS:
-            self.assertIn(f'"./skills/{name}"', manifest)
-        self.assertIn("唯一评审派发与覆盖判定入口", concurrent)
-        self.assertIn("不得预先派发 reviewer", gate)
-        self.assertIn("owns coverage", gate)
+        review = (SKILLS_ROOT / REVIEW_SKILL / "SKILL.md").read_text()
+        self.assertIn(f'"./skills/{REVIEW_SKILL}"', manifest)
+        self.assertIn("does not decide whether a review is required", review)
+        self.assertIn("does not select the reviewer backend, model, or effort", review)
+        self.assertIn("profile: `design`, `implementation`, or `concurrency`", review)
+        self.assertIn("TOCTOU", review)
+        self.assertFalse((SKILLS_ROOT / "concurrent-design-review").exists())
+        self.assertFalse((SKILLS_ROOT / "spec-review-gate").exists())
 
-    def test_readmes_document_specialist_review_skills(self):
+    def test_readmes_document_independent_review_skill(self):
         for readme in (ROOT / "README.md", ROOT / "README.zh.md"):
             text = readme.read_text()
-            for name in SPECIALIST_SKILLS:
-                self.assertIn(f"./skills/{name}/", text)
+            self.assertIn(f"./skills/{REVIEW_SKILL}/", text)
+            self.assertNotIn("concurrent-design-review", text)
+            self.assertNotIn("spec-review-gate", text)
 
     def test_readmes_document_runtime_and_workflow_dependencies(self):
         english = (ROOT / "README.md").read_text()
@@ -197,8 +196,7 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
                 "brainstorming",
                 "grilling",
                 "coding-guidelines",
-                "concurrent-design-review",
-                "spec-review-gate",
+                "independent-review",
                 "Cursor",
                 "Codex",
             ):

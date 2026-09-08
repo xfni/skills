@@ -68,7 +68,7 @@ Use risk-based reliability boundaries, not a universal style checklist. Identify
 
 Function length, parameter count, nesting, broad dynamic payloads, and repeated conditionals are review signals, not an automatic extraction rule. Extract only for a current responsibility boundary, testability, or readability problem.
 
-For shared mutable state, ownership transfer, lock ordering, cancellation, background lifecycle, or cross-thread/async boundaries, invoke `concurrent-design-review`. This guideline does not replace its independent review and coverage decision.
+For shared mutable state, ownership transfer, lock ordering, cancellation, background lifecycle, or cross-thread/async boundaries, invoke `independent-review` with the `concurrency` profile. This guideline does not replace independent review evidence.
 
 ## 5. Surgical Changes
 
