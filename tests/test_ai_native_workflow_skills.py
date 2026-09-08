@@ -213,6 +213,13 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
         for readme in (ROOT / "README.md", ROOT / "README.zh.md"):
             self.assertNotIn("init-claude", readme.read_text())
 
+    def test_declared_mit_license_has_a_root_license_file(self):
+        manifest = (ROOT / ".claude-plugin" / "plugin.json").read_text()
+        license_file = ROOT / "LICENSE"
+        self.assertIn('"license": "MIT"', manifest)
+        self.assertTrue(license_file.is_file())
+        self.assertIn("MIT License", license_file.read_text())
+
 
 if __name__ == "__main__":
     unittest.main()
