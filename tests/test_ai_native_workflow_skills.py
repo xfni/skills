@@ -139,9 +139,8 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
         self.assertIn("name: coding-guidelines", skill)
         self.assertIn("coding-guidelines", code_workflow)
 
-    def test_reliability_and_privacy_rules_have_distinct_ownership(self):
+    def test_coding_guidelines_owns_risk_based_reliability_boundaries(self):
         guidelines = (SKILLS_ROOT / "coding-guidelines" / "SKILL.md").read_text().lower()
-        privacy = (SKILLS_ROOT / "privacy-coding-rule" / "SKILL.md").read_text().lower()
         manifest = (ROOT / ".claude-plugin" / "plugin.json").read_text()
 
         for value in (
@@ -153,19 +152,12 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
         ):
             self.assertIn(value, guidelines)
 
-        for value in (
-            "organization's internal privacy",
-            "source of truth",
-            "do not invent or weaken a policy",
-            "approved destinations",
-        ):
-            self.assertIn(value, privacy)
-
-        self.assertIn('"./skills/privacy-coding-rule"', manifest)
         self.assertNotIn('"./skills/coding-hard-constraints"', manifest)
         self.assertNotIn('"./skills/coding-observability-errors"', manifest)
+        self.assertNotIn('"./skills/privacy-coding-rule"', manifest)
         self.assertFalse((SKILLS_ROOT / "coding-hard-constraints").exists())
         self.assertFalse((SKILLS_ROOT / "coding-observability-errors").exists())
+        self.assertFalse((SKILLS_ROOT / "privacy-coding-rule").exists())
 
     def test_codex_manifest_reuses_the_shared_skills_directory(self):
         manifest = ROOT / ".codex-plugin" / "plugin.json"
@@ -189,6 +181,15 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
             text = readme.read_text()
             for name in SPECIALIST_SKILLS:
                 self.assertIn(f"./skills/{name}/", text)
+
+    def test_obsolete_init_claude_skill_and_its_docs_are_not_packaged(self):
+        manifest = (ROOT / ".claude-plugin" / "plugin.json").read_text()
+        self.assertNotIn('"./skills/init-claude"', manifest)
+        self.assertFalse((SKILLS_ROOT / "init-claude").exists())
+        self.assertFalse((ROOT / ".ai" / "plans" / "2026-05-26-init-claude-skill.md").exists())
+        self.assertFalse((ROOT / ".ai" / "specs" / "2026-05-26-init-claude-skill-design.md").exists())
+        for readme in (ROOT / "README.md", ROOT / "README.zh.md"):
+            self.assertNotIn("init-claude", readme.read_text())
 
 
 if __name__ == "__main__":
