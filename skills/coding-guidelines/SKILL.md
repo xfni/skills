@@ -48,7 +48,21 @@ Before adding an abstraction, write an abstraction receipt: current repetition, 
 
 Ask whether each new layer has an abstraction receipt, whether direct calls to existing domain services would make the business order clearer, and whether configuration, extension points, registries, base classes, or generic containers have a current consumer. Classify unsupported frameworking as `Over-abstraction / Premature platformization`; recommend inlining it unless current evidence exists. Readable sequencing is often the correct design.
 
-## 3. Surgical Changes
+## 3. Reliability Boundaries
+
+Use risk-based reliability boundaries, not a universal style checklist. Identify the actual boundary before adding validation, error handling, wrapping, logging, or a new type.
+
+- At an untrusted input or execution boundary—HTTP, MQ, file, CLI, webhook, SQL, shell, path, template, or deserialization—validate/normalize input and use safe APIs or parameterization.
+- At a trusted boundary between typed internal components, state and preserve the invariant. Do not add defensive checks merely to make every access optional; that can hide a defect.
+- Keep secrets, tokens, credentials, and PII out of logs, errors, telemetry, fixtures, and debug output.
+- Make resource ownership explicit and use scoped cleanup. Do not silently discard asynchronous failures.
+- Follow the language and repository convention for comparisons. Use guard clauses when they clarify the normal path; do not impose Yoda conditions or split cohesive code solely to meet a metric.
+
+Function length, parameter count, nesting, broad dynamic payloads, and repeated conditionals are review signals, not an automatic extraction rule. Extract only for a current responsibility boundary, testability, or readability problem.
+
+For shared mutable state, ownership transfer, lock ordering, cancellation, background lifecycle, or cross-thread/async boundaries, invoke `concurrent-design-review`. This guideline does not replace its independent review and coverage decision.
+
+## 4. Surgical Changes
 
 **Touch only what you must. Clean up only your own mess.**
 
@@ -64,7 +78,7 @@ When your changes create orphans:
 
 The test: Every changed line should trace directly to the user's request.
 
-## 4. Goal-Driven Execution
+## 5. Goal-Driven Execution
 
 **Define success criteria. Loop until verified.**
 

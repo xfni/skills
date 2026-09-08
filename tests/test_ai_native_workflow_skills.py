@@ -139,6 +139,34 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
         self.assertIn("name: coding-guidelines", skill)
         self.assertIn("coding-guidelines", code_workflow)
 
+    def test_reliability_and_privacy_rules_have_distinct_ownership(self):
+        guidelines = (SKILLS_ROOT / "coding-guidelines" / "SKILL.md").read_text().lower()
+        privacy = (SKILLS_ROOT / "privacy-coding-rule" / "SKILL.md").read_text().lower()
+        manifest = (ROOT / ".claude-plugin" / "plugin.json").read_text()
+
+        for value in (
+            "risk-based reliability boundaries",
+            "follow the language and repository convention",
+            "trusted boundary",
+            "review signals, not an automatic extraction rule",
+            "concurrent-design-review",
+        ):
+            self.assertIn(value, guidelines)
+
+        for value in (
+            "organization's internal privacy",
+            "source of truth",
+            "do not invent or weaken a policy",
+            "approved destinations",
+        ):
+            self.assertIn(value, privacy)
+
+        self.assertIn('"./skills/privacy-coding-rule"', manifest)
+        self.assertNotIn('"./skills/coding-hard-constraints"', manifest)
+        self.assertNotIn('"./skills/coding-observability-errors"', manifest)
+        self.assertFalse((SKILLS_ROOT / "coding-hard-constraints").exists())
+        self.assertFalse((SKILLS_ROOT / "coding-observability-errors").exists())
+
     def test_codex_manifest_reuses_the_shared_skills_directory(self):
         manifest = ROOT / ".codex-plugin" / "plugin.json"
         self.assertTrue(manifest.is_file())

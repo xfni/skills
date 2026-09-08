@@ -10,9 +10,8 @@ English | [简体中文](./README.zh.md)
 |-------|-------------|
 | [git-commit-convention](./skills/git-commit-convention/) | Enforces a structured Chinese commit format: `prefix(ISSUE): summary` on the first line, typed body entries (`feat1:`, `fix1:`, ...), and strict file-scope rules |
 | [init-claude](./skills/init-claude/) | Bootstraps Claude configuration for a new project — generates `CLAUDE.md`, merges a low-risk command allowlist into `settings.json`, and installs `git-commit-convention` locally |
-| [coding-hard-constraints](./skills/coding-hard-constraints/) | Structural coding rules: Yoda conditions, defensive access, early returns, strong typing, function complexity limits, security boundaries, and concurrency safety |
-| [coding-observability-errors](./skills/coding-observability-errors/) | Logging and exception governance: entry/exit tracing, structured error codes, resource cleanup, timeout requirements, and error propagation strategy |
-| [coding-guidelines](./skills/coding-guidelines/) | Coding principles for simple, surgical, evidence-driven implementation that avoids speculative abstractions and premature platformization |
+| [coding-guidelines](./skills/coding-guidelines/) | Coding principles for simple, surgical, evidence-driven implementation, including risk-based reliability boundaries |
+| [privacy-coding-rule](./skills/privacy-coding-rule/) | Organization-owned privacy and data-handling rules, applied from the authoritative internal policy |
 | [backend-module-discipline](./skills/backend-module-discipline/) | Backend architecture discipline: orchestration-only coordinators, subsystem facades, typed boundaries, enum-first state, symmetric-flow extraction, and completed migrations |
 | [concurrent-design-review](./skills/concurrent-design-review/) | Independent two-perspective review for concurrent, lifecycle, and shared-state designs, including code-path reality and system failure modes |
 | [requirements-to-roadmap](./skills/requirements-to-roadmap/) | Explicit-only workflow for investigating, discussing, stress-testing, and freezing a bounded requirement roadmap |
@@ -74,27 +73,14 @@ One command to bootstrap any new project:
 3. Merges a curated low-risk command allowlist into `.claude/settings.json`
 4. Copies `git-commit-convention` into the project's `.claude/skills/`
 
-### coding-hard-constraints
+### privacy-coding-rule
 
-Hard structural rules applied when writing, reviewing, or refactoring any code:
+The organization-owned entry point for privacy and data-handling requirements:
 
-- **Yoda conditions** — constants on the left: `nil == err`, `None is value`
-- **Defensive access** — no deep chaining; use optional chaining or null guards
-- **Early returns** — guard clauses first, main logic stays at the leftmost indent
-- **Strong typing** — no bare `dict`, `Map<String,Object>`, or `Record<string,any>` for business data
-- **Complexity limits** — max 40 lines per function, 4 parameters, 3 nesting levels
-- **Security boundaries** — parameterized queries only, input validation at system edges, no secrets in logs
-- **Concurrency safety** — all shared mutable state must be explicitly protected
-
-### coding-observability-errors
-
-Logging and exception standards for service layer and external integrations:
-
-- **Tracing** — entry (INFO), milestones (INFO), exit (INFO), debug details (DEBUG), expected errors (WARN), system failures (ERROR)
-- **Comments** — explain *why*, not *what*; public functions require a standard docstring
-- **Exception governance** — no empty catch blocks; exceptions map to standard `Code + Message`; resources must use `try-with-resources` / `with` / `defer`
-- **Error propagation** — recoverable errors return result codes; unrecoverable errors propagate upward
-- **Timeouts** — every cross-service call must set an explicit timeout (≥ P99 baseline)
+- **Policy first** — apply the authoritative internal policy; do not invent or weaken a privacy rule
+- **End-to-end path** — assess collection, transformation, telemetry, queues, storage, exports, test data, and external calls
+- **Approved destinations** — use only approved storage, telemetry fields, redaction methods, and integrations
+- **Evidence and escalation** — retain the policy reference and required evidence; escalate missing or conflicting rules to the policy owner
 
 ### coding-guidelines
 
@@ -107,6 +93,7 @@ Five principles to reduce common LLM coding mistakes:
 | **Surgical Changes** | Orthogonal edits, touching code outside the task scope |
 | **Goal-Driven Execution** | Verifiable success criteria, test-first loops |
 | **Evidence-Driven Abstraction** | Framework-like layers without current consumers or variation |
+| **Reliability Boundaries** | Untrusted input, executable interfaces, resources, privacy, and concurrency risks |
 
 ## Requirements
 

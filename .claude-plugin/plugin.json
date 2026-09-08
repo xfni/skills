@@ -10,9 +10,8 @@
   "skills": [
     "./skills/git-commit-convention",
     "./skills/init-claude",
-    "./skills/coding-hard-constraints",
-    "./skills/coding-observability-errors",
     "./skills/coding-guidelines",
+    "./skills/privacy-coding-rule",
     "./skills/backend-module-discipline",
     "./skills/concurrent-design-review",
     "./skills/requirements-to-roadmap",
