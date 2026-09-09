@@ -20,7 +20,7 @@ flowchart LR
     C -. 可选只读终审 .-> CU
 ```
 
-`requirement-council` 是面对非空功能需求文本的可选、仅 Codex 预工作流阶段；输入既可以是一句模糊需求，也可以是多行初稿。四个只读角色围绕证据支持的方向进行讨论，供人工选择。它在 roadmap、Spec、Plan 或实现之前结束；是否采用其结果由人工决定，之后如有需要，必须显式调用 `$requirements-to-roadmap`。
+`requirement-council` 是面对非空功能需求文本的可选、仅 Codex 预工作流阶段；输入既可以是一句模糊需求，也可以是多行初稿。三个角色分别审视用户价值、最小交付/重构与具体风险，供人工选择。它在 roadmap、Spec、Plan 或实现之前结束；是否采用其结果由人工决定，之后如有需要，必须显式调用 `$requirements-to-roadmap`。
 
 现有三个工作流技能保持不变，且均为仅显式调用：它们不会自动串联。一个阶段完成并由人工确认交接后，再调用下一个技能。
 
@@ -31,7 +31,7 @@ flowchart LR
 | [git-commit-convention](./skills/git-commit-convention/) | 让本地提交保持需求范围清晰、关联文档完整，并遵循中文提交信息格式。 | 独立使用。需要 Git 仓库；提交时需要 issue 编号。 |
 | [coding-guidelines](./skills/coding-guidelines/) | 编码与审阅时避免推测性抽象、范围蔓延、不安全边界和半迁移。 | 实现与审阅的基线。`spec-plan-to-code` **必须依赖**。 |
 | [independent-review](./skills/independent-review/) | 统一设计、实现和并发 profile 的证据、范围、发现与复审标准。 | 调用方选择 profile、`subagent` 或 `cursor`、模型与思考强度；本技能不做路由决定。 |
-| [requirement-council](./skills/requirement-council/) | 用四个只读角色探讨一行或多行功能需求文本，并给出有证据支持、供人工决策的方向。 | **可选，仅 Codex** 的预工作流阶段。它不会自动启动或交接给现有工作流；人工选择后，如有需要显式调用 `$requirements-to-roadmap`。 |
+| [requirement-council](./skills/requirement-council/) | 用三个角色探讨功能需求，并给出有证据支持的方向、风险和待补事实。 | **可选，仅 Codex** 的预工作流阶段。它不会自动启动或交接给现有工作流；人工选择后，如有需要显式调用 `$requirements-to-roadmap`。 |
 | [requirements-to-roadmap](./skills/requirements-to-roadmap/) | 定位现状、讨论范围并产出包含 `REQ-*`、`DEC-*`、`AC-*` 与 Phase ID 的确认 roadmap。 | 可选使用 `brainstorming` 与 `grilling`；缺失任一技能时使用内置等价方法。确认后的 Phase ID 交给 `roadmap-to-spec-plan`。 |
 | [roadmap-to-spec-plan](./skills/roadmap-to-spec-plan/) | 将一个已确认 roadmap 阶段转为决策包、Spec、可执行 Plan、验收矩阵和审阅台账。 | **必须依赖**确认后的 roadmap / Phase ID。调用 `independent-review` 的 `design` 或 `concurrency` profile，并显式选择 Astra 或 Cursor。已批准产物交给 `spec-plan-to-code`。 |
 | [spec-plan-to-code](./skills/spec-plan-to-code/) | 依据已批准决策包、Spec 和 Plan 实现代码，并保留按变更类型选择的测试、独立审阅、探针、运行时验证与证据。 | **必须依赖** `roadmap-to-spec-plan` 的批准产物和 `coding-guidelines`。调用 `independent-review` 的实现/并发 profile，并显式选择 reviewer backend、模型与思考强度。 |
@@ -52,9 +52,9 @@ flowchart LR
 | `~/.cursor-review/API_KEY` 中的 Cursor API key | 仅在调用仓库自带 Cursor 审阅脚本时需要。不得将 key 写入仓库或提示词。 |
 | `brainstorming`、`grilling` 技能 | 推荐用于更深入的需求讨论；缺失时 `requirements-to-roadmap` 会安全降级。 |
 | 已配置的审阅模型 | 工作流引用 Astra 等独立审阅模型；宿主运行时需要提供等价且已授权的审阅能力。 |
-| Requirement Council（仅 Codex） | 需要将四个自定义 Agent TOML 全局安装到 Codex，并请求精确配置 `gpt-5.6-sol` / `high` / `read-only`。模型可用性，以及实际生效的模型、思考强度、沙箱与子 Agent 隔离均取决于宿主；请求配置并非不可变的运行时保证。 |
+| Requirement Council（仅 Codex） | 需要将三个自定义 Agent TOML 全局安装到 Codex。每次运行由 moderator 选择模型/思考强度档位，并在创建子 Agent 时传入；未获宿主证明时，只读行为属于协议约束。 |
 
-Requirement Council 的运行有轮次上限；宿主无法确认所需能力，或无法保留/重建四个角色时，结果可能不完整。宿主未证明时，只读行为与结果属于协议约束或事后观察；对话记录不是完整、不可变的审计档案。
+Requirement Council 默认仅在开始和结束时比较仓库快照；用户明确要求时才启用审计模式。宿主无法证明只读隔离时，结果标为协议约束而非直接失败；发现仓库变化即终止运行。
 
 ## 安装
 
@@ -80,11 +80,10 @@ ln -s "$(pwd)/skills/requirements-to-roadmap" ~/.codex/skills/requirements-to-ro
 Requirement Council 使用个人 Codex Agent，而不是项目级 Agent。必须完成以下两个安装步骤：
 
 1. 将 `skills/requirement-council` 复制或链接到 `~/.codex/skills/requirement-council`。
-2. 将 `skills/requirement-council/agents/` 中全部四个独立 Agent TOML 复制到 `~/.codex/agents/`：
+2. 将 `skills/requirement-council/agents/` 中全部三个独立 Agent TOML 复制到 `~/.codex/agents/`：
    - `requirement-council-user-value-explorer.toml`
-   - `requirement-council-minimal-delivery-architect.toml`
+   - `requirement-council-minimal-delivery-reframer.toml`
    - `requirement-council-risk-counterexample-critic.toml`
-   - `requirement-council-contrarian-reframer.toml`
 
 例如，在仓库根目录执行：
 
@@ -92,9 +91,8 @@ Requirement Council 使用个人 Codex Agent，而不是项目级 Agent。必须
 mkdir -p ~/.codex/skills ~/.codex/agents
 ln -s "$(pwd)/skills/requirement-council" ~/.codex/skills/requirement-council
 cp skills/requirement-council/agents/requirement-council-user-value-explorer.toml ~/.codex/agents/requirement-council-user-value-explorer.toml
-cp skills/requirement-council/agents/requirement-council-minimal-delivery-architect.toml ~/.codex/agents/requirement-council-minimal-delivery-architect.toml
+cp skills/requirement-council/agents/requirement-council-minimal-delivery-reframer.toml ~/.codex/agents/requirement-council-minimal-delivery-reframer.toml
 cp skills/requirement-council/agents/requirement-council-risk-counterexample-critic.toml ~/.codex/agents/requirement-council-risk-counterexample-critic.toml
-cp skills/requirement-council/agents/requirement-council-contrarian-reframer.toml ~/.codex/agents/requirement-council-contrarian-reframer.toml
 ```
 
 安装或更新 Agent TOML 后，请启动一个全新的 Codex 会话，让个人 Agent 发现机制重新加载这些文件。

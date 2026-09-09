@@ -261,6 +261,61 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
         self.assertTrue(license_file.is_file())
         self.assertIn("MIT License", license_file.read_text())
 
+    def test_requirement_council_rework_contract(self):
+        """BCS-696: standard council stays useful within root + three-child capacity."""
+        skill_root = SKILLS_ROOT / REQUIREMENT_COUNCIL_SKILL
+        text = (skill_root / "SKILL.md").read_text()
+        agents_root = skill_root / "agents"
+        expected_agents = {
+            "requirement-council-user-value-explorer.toml": "requirement_council_user_value_explorer",
+            "requirement-council-minimal-delivery-reframer.toml": "requirement_council_minimal_delivery_reframer",
+            "requirement-council-risk-counterexample-critic.toml": "requirement_council_risk_counterexample_critic",
+        }
+
+        self.assertEqual(
+            set(expected_agents), {path.name for path in agents_root.glob("*.toml")}
+        )
+        for filename, name in expected_agents.items():
+            config = tomllib.loads((agents_root / filename).read_text())
+            self.assertEqual(name, config["name"])
+            self.assertNotIn("model", config)
+            self.assertNotIn("model_reasoning_effort", config)
+            self.assertNotIn("sandbox_mode", config)
+
+        reframer = tomllib.loads(
+            (agents_root / "requirement-council-minimal-delivery-reframer.toml").read_text()
+        )["developer_instructions"].lower()
+        for phrase in (
+            "smallest deliverable boundary",
+            "challenge the problem framing",
+            "process or no-build",
+            "future",
+        ):
+            self.assertIn(phrase, reframer)
+
+        for value in (
+            "gpt-5.6-sol", "low", "12 minutes",
+            "gpt-5.6-sol", "high", "16 minutes",
+            "gpt-5.6-terra", "medium", "8 minutes",
+            "gpt-5.6-terra", "xhigh",
+            "fork_turns=none", "model", "reasoning_effort",
+            "council-standard", "council-audited", "PROTOCOL_CONSTRAINED",
+            "before and after", "REPOSITORY_CHANGED",
+            "original_request", "human_context", "repository_scope",
+            "soft deadline", "one 4-minute extension",
+            "two rounds", "blocking objection",
+            "READY_FOR_SELECTION", "MORE_EVIDENCE_NEEDED", "NO_BUILD_RECOMMENDED",
+            "directions", "blocking_objections", "changed_my_mind",
+            "product direction", "implementation constraints",
+            "do not select the default", "wait for the human to choose",
+            "Do not snapshot, inspect repositories, or spawn",
+            "minimum requirement checklist", "unresolved requirement-critical question",
+            "brainstorming core", "alternatives and trade-offs",
+        ):
+            self.assertIn(value, text)
+        self.assertNotIn("packet_hash", text)
+
+    @unittest.skip("Superseded by the BCS-696 standard/audited council contract.")
     def test_requirement_council_skill_is_explicit_only_and_instruction_only(self):
         skill = SKILLS_ROOT / REQUIREMENT_COUNCIL_SKILL / "SKILL.md"
         metadata = SKILLS_ROOT / REQUIREMENT_COUNCIL_SKILL / "agents" / "openai.yaml"
@@ -294,6 +349,7 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
         self.assertFalse((skill.parent / "scripts").exists())
         self.assertFalse(any(skill.parent.glob("*.py")))
 
+    @unittest.skip("Superseded by the BCS-696 spawn-selected model contract.")
     def test_requirement_council_custom_agents_have_exact_contracts(self):
         agents_root = ROOT / "skills" / "requirement-council" / "agents"
         self.assertFalse((ROOT / ".codex" / "agents").exists())
@@ -346,6 +402,7 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
                 ):
                     self.assertIn(term, instructions_lower)
 
+    @unittest.skip("Superseded by the BCS-696 protocol-constrained assurance contract.")
     def test_requirement_council_preflight_and_assurance_contract(self):
         text = self._requirement_council_skill_text()
         for value in (
@@ -363,6 +420,7 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
         ):
             self.assertIn(value, text)
 
+    @unittest.skip("Superseded by the BCS-696 lightweight round protocol.")
     def test_requirement_council_state_and_round_protocol_contract(self):
         text = self._requirement_council_skill_text()
         for field in (
@@ -489,6 +547,7 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
             ("must not commit an early response", "increment `packet_version`", "intermediate results", "barrier remains open"),
         )
 
+    @unittest.skip("Superseded by BCS-696 adaptive stopping outcomes.")
     def test_requirement_council_convergence_reporting_and_handoff_contract(self):
         text = self._requirement_council_skill_text()
         for value in (
@@ -563,6 +622,7 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
             ),
         )
 
+    @unittest.skip("Superseded by BCS-696 concise delta synthesis.")
     def test_requirement_council_candidate_assessments_are_separate_and_evidenced(self):
         text = self._requirement_council_skill_text()
         card = re.search(r"Every candidate card contains:\s+```text\n(.*?)```", text, re.S)
@@ -588,6 +648,7 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
             ),
         )
 
+    @unittest.skip("Superseded by BCS-696 soft deadlines and bounded extension.")
     def test_requirement_council_deadline_expiry_and_retry_relationships(self):
         text = self._requirement_council_skill_text()
         for values in (
@@ -611,6 +672,7 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
         ):
             self._assert_contract_clause(text, values)
 
+    @unittest.skip("Superseded by BCS-696 soft deadlines and bounded extension.")
     def test_requirement_council_attempt_receipt_cutoff_is_ordered_before_validation(self):
         for source, text in (("Skill", self._requirement_council_skill_text()),):
             with self.subTest(source=source):
@@ -630,6 +692,7 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
                      "processing order", "revive overdue attempts"),
                 )
 
+    @unittest.skip("Superseded by BCS-696 adaptive rounds.")
     def test_requirement_council_urgent_restart_consumes_round_and_refreshes_attempt_budget(self):
         for source, text in (("Skill", self._requirement_council_skill_text()),):
             with self.subTest(source=source):
@@ -659,6 +722,7 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
                      "MAX_ROUNDS_UNRESOLVED", "completeness disclosure"),
                 )
 
+    @unittest.skip("Superseded by BCS-696 adaptive rounds.")
     def test_requirement_council_required_early_rounds_cannot_be_skipped_by_human_restart(self):
         for source, text in (("Skill", self._requirement_council_skill_text()),):
             with self.subTest(source=source):
@@ -675,6 +739,7 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
                      "Continuing requires a new run"),
                 )
 
+    @unittest.skip("Superseded by BCS-696 three-agent installation layout.")
     def test_requirement_council_distribution_and_workflow_compatibility(self):
         for readme in (ROOT / "README.md", ROOT / "README.zh.md"):
             text = readme.read_text()
@@ -710,6 +775,7 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
             text = (SKILLS_ROOT / name / "SKILL.md").read_text()
             self.assertNotIn(REQUIREMENT_COUNCIL_SKILL, text)
 
+    @unittest.skip("Superseded by the BCS-696 three-agent installation layout.")
     def test_requirement_council_installation_step_parser_binds_paths_to_their_steps(self):
         readme = """## Codex installation
 
