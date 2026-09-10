@@ -14,9 +14,13 @@ SKILLS = (
     "requirements-to-roadmap",
     "roadmap-to-spec-plan",
     "spec-plan-to-code",
+    "code-to-integration-testing",
 )
 REVIEW_SKILL = "independent-review"
-CURSOR_SKILLS = SKILLS[1:]
+CURSOR_SKILLS = (
+    "roadmap-to-spec-plan",
+    "spec-plan-to-code",
+)
 REQUIREMENT_COUNCIL_SKILL = "requirement-council"
 REQUIREMENT_COUNCIL_AGENTS = {
     "requirement-council-user-value-explorer.toml": {
@@ -141,10 +145,11 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
         for value in (
             "existing user changes",
             "actual command, result, evidence location, remaining risk, and scope variance",
-            "isolate test data",
             "return to the Astra → Cursor final-review sequence",
         ):
             self.assertIn(value, code)
+        integration = (SKILLS_ROOT / "code-to-integration-testing" / "SKILL.md").read_text()
+        self.assertIn("isolated data", integration)
 
     def test_workflow_handoff_preserves_requirement_phase_and_evidence_traceability(self):
         roadmap = (SKILLS_ROOT / "requirements-to-roadmap" / "SKILL.md").read_text()
@@ -155,7 +160,36 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
         self.assertIn("`REQ-*` → `DEC-*` → `AC-*`", spec_plan)
         self.assertIn("linked requirement, decision, and acceptance IDs", spec_plan)
         self.assertIn("linked `REQ-*`, `DEC-*`, and `AC-*` IDs", code)
-        self.assertIn("`REQ-*` → `AC-*` → evidence", code)
+        self.assertIn("`REQ-*` → `AC-*` → unit/contract evidence", code)
+        integration = (SKILLS_ROOT / "code-to-integration-testing" / "SKILL.md").read_text()
+        self.assertIn("`REQ-*` → `AC-*` → test case → evidence", integration)
+
+    def test_integration_testing_is_designed_before_code_and_executed_afterward(self):
+        spec_plan = (SKILLS_ROOT / "roadmap-to-spec-plan" / "SKILL.md").read_text()
+        code = (SKILLS_ROOT / "spec-plan-to-code" / "SKILL.md").read_text()
+        integration = (SKILLS_ROOT / "code-to-integration-testing" / "SKILL.md").read_text()
+
+        for value in (
+            "Integration Test Design",
+            "real-environment",
+            "REQ-*", "AC-*",
+            "environment, data, permissions, observability",
+        ):
+            self.assertIn(value, spec_plan)
+        self.assertIn("code-to-integration-testing", code)
+        integration_lower = integration.lower()
+        for value in (
+            "approved integration test design",
+            "probe", "real-environment",
+            "test cases", "freeze",
+            "scope delta",
+            "do not change acceptance semantics",
+            "blocking prerequisite", "continue independent cases",
+            "safety, data pollution", "re-run affected cases",
+            "req-*` → `ac-*` → test case → evidence",
+            "cleanup",
+        ):
+            self.assertIn(value, integration_lower)
 
     def test_karpathy_guidelines_require_evidence_for_abstractions(self):
         text = (SKILLS_ROOT / "coding-guidelines" / "SKILL.md").read_text().lower()

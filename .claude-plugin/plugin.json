@@ -13,6 +13,7 @@
     "./skills/independent-review",
     "./skills/requirements-to-roadmap",
     "./skills/roadmap-to-spec-plan",
-    "./skills/spec-plan-to-code"
+    "./skills/spec-plan-to-code",
+    "./skills/code-to-integration-testing"
   ]
 }

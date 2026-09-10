@@ -1,0 +1,6 @@
+interface:
+  display_name: Code to Integration Testing
+  short_description: Execute approved probes and real-environment test cases for completed code.
+  default_prompt: Use $code-to-integration-testing to validate this completed implementation against its approved Integration Test Design.
+policy:
+  allow_implicit_invocation: false

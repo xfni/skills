@@ -5,7 +5,7 @@ description: Use when the user explicitly invokes $roadmap-to-spec-plan to creat
 
 # Roadmap to Spec and Plan
 
-Use this explicit-only workflow after a roadmap has a confirmed scope. Deliver a Decision Package, Spec, Plan, acceptance matrix, review ledger, and Deferred items; stop before implementation. The primary agent researches, writes, and revises. Reviewers are read-only, do not make product decisions, and do not delegate.
+Use this explicit-only workflow after a roadmap has a confirmed scope. Deliver a Decision Package, Spec, Plan, acceptance matrix, Integration Test Design, review ledger, and Deferred items; stop before implementation. The primary agent researches, writes, and revises. Reviewers are read-only, do not make product decisions, and do not delegate.
 
 **REQUIRED SUB-SKILL:** Every independent review in this workflow must use `independent-review` with the `design` profile. This workflow selects the backend, model, and effort: Astra reviews use `backend: subagent`, `model: gpt-6-astra`, and `effort: medium`; final external reviews use `backend: cursor`, `model: grok-4.6`, and `effort: high`. When the selected phase involves concurrency, locks, shared mutable state, async boundaries, or lifecycle, add a pre-Plan `concurrency`-profile review with `backend: subagent`, `model: gpt-6-astra`, and `effort: medium`.
 
@@ -21,13 +21,17 @@ Give every finding an ID, category, evidence, affected requirement or file, impa
 
 After a revision, review only the changed boundary, unresolved findings, and affected artifacts. If the same dispute remains unresolved for two review rounds without new evidence, record the disagreement and its impact, defer the dependent part for a human decision, and continue independent work. Do not endlessly reopen a settled concern or lower acceptance to close a finding.
 
-## Spec, then Plan
+## Spec, Integration Test Design, then Plan
 
 Write a Spec that covers behavior, interfaces and data constraints, errors and rollback, compatibility, invariants, risks, and acceptance. Link each assertion to the Decision Package.
 
+Write an **Integration Test Design** after the Spec and before the Plan. It defines the approved test semantics, rather than a complete executable case list: map `REQ-*` and `AC-*` to prioritized test points; identify mandatory real-environment validation; cover critical success, failure, and fallback paths; record environment, data, permissions, observability, safety, cleanup, rollback, and measurable thresholds. State which checks are probes and which need a real request through the intended dependency chain. Keep it sufficiently concrete to expose an untestable acceptance criterion, but defer endpoint-level commands, exact fixtures, and case steps until the implemented version exists.
+
+Treat a change to an approved test point, observable acceptance result, real-environment scope, or threshold as a Scope Delta. Refining one test point into more cases or adding implementation-detail evidence without changing acceptance semantics is permitted and must retain its `REQ-*`/`AC-*` trace.
+
 For each Spec review iteration, use two distinct `independent-review` `design`-profile stages in this fixed order. First use `backend: subagent`, `gpt-6-astra` with `medium` effort. Only after its findings are resolved or dispositioned, use `backend: cursor` with `grok-4.6` and `high` effort as the last external review. Astra checks roadmap → decisions → Spec consistency, hidden business decisions, scope expansion, and acceptance completeness. Cursor checks repository facts, call paths, technical feasibility, compatibility, and testability. Do not reverse the order or treat Cursor feedback as permission to expand the approved scope. A Cursor-driven revision returns to the Astra → Cursor sequence.
 
-Write the Plan only after the Spec passes this gate. For every task include an ID, dependencies, linked requirement, decision, and acceptance IDs, exact change boundary, minimal implementation steps, explicit forbidden changes, and evidence-producing validation. Select validation by change type: behavior, API, state, and compatibility changes need an executable failing-test path; configuration, generated artifacts, and deployment descriptions need parsing, schema, dry-run, startup, or integration evidence. Record prerequisites, repository-verified commands, expected observable results, failure diagnosis, and rollback where relevant.
+Write the Plan only after the Spec and Integration Test Design pass this gate. For every task include an ID, dependencies, linked requirement, decision, and acceptance IDs, exact change boundary, minimal implementation steps, explicit forbidden changes, and evidence-producing validation. Select validation by change type: behavior, API, state, and compatibility changes need an executable failing-test path; configuration, generated artifacts, and deployment descriptions need parsing, schema, dry-run, startup, or integration evidence. Record prerequisites, repository-verified commands, expected observable results, failure diagnosis, and rollback where relevant. Add the explicit post-implementation handoff to `$code-to-integration-testing`; it must name the approved Integration Test Design and the tests or probes each task leaves for that workflow.
 
 Review every Plan iteration through `independent-review` with the `design` profile in the same Astra → Cursor order and backend/model settings. Astra checks Spec → Plan → acceptance coverage, scope consistency, and execution ambiguity. Cursor checks task executability, dependency order, actual paths and commands, tests, and compatibility gaps. Do not start implementation in this skill.
 
@@ -48,4 +52,4 @@ Build the brief from approved scope, baseline version, relevant paths, decisions
 
 ## Deliver and stop
 
-Deliver the Decision Package, Spec, Plan, acceptance matrix, review ledger, and Deferred items. Record reviewed versions, dispositions, remaining limits, and the explicit next invocation. Mark artifacts executable only when the required reviews actually completed; otherwise name the precise gap. Do not automatically start coding or invoke another explicit-only workflow.
+Deliver the Decision Package, Spec, Plan, acceptance matrix, Integration Test Design, review ledger, and Deferred items. Record reviewed versions, dispositions, remaining limits, and the explicit next invocation. Mark artifacts executable only when the required reviews actually completed; otherwise name the precise gap. Do not automatically start coding or invoke another explicit-only workflow.

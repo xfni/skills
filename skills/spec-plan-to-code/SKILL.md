@@ -5,7 +5,7 @@ description: Use when the user explicitly invokes $spec-plan-to-code to implemen
 
 # Spec and Plan to Code
 
-Use this explicit-only workflow to implement an approved Decision Package, Spec, and Plan. The primary agent owns all edits, debugging, tests, probes, service runs, and fixes. Reviewers are read-only and do not make product decisions.
+Use this explicit-only workflow to implement an approved Decision Package, Spec, Plan, and Integration Test Design. The primary agent owns all edits, debugging, unit and contract tests, and fixes. Reviewers are read-only and do not make product decisions.
 
 **REQUIRED SUB-SKILL:** Use `coding-guidelines` before writing implementation code and when reviewing any change. Its evidence-driven abstraction rule governs whether a direct local orchestration or a new layer is appropriate; no reviewer may turn speculative platformization into a requirement.
 
@@ -37,13 +37,13 @@ When the primary agent encounters difficult analysis, cannot decide within froze
 
 Provide the frozen Spec and Plan, Task or milestone boundary, changed version, linked `REQ-*`, `DEC-*`, and `AC-*` IDs, necessary call paths, and actual validation evidence. Limit reviewers to consistency with the approved baseline, regressions, verification gaps, and unapproved scope; do not reopen unrelated product or architecture design. Verify every finding before fixing it; defer scope expansion unless approved. A code or behavior change returns the affected Task or milestone to under-review and requires independent re-review.
 
-## Final review and runtime evidence
+## Final review and integration-test handoff
 
 After all Task and milestone reviews complete, use this fixed final-review order through `independent-review` with the `implementation` profile: first `backend: subagent`, `gpt-6-astra`, `medium`; only after its findings are resolved or dispositioned, `backend: cursor`, `grok-4.6`, `high` as the last external review. Astra checks decision → Spec → Plan → code → evidence consistency; Cursor checks correctness, non-local flows, compatibility, errors, tests, and regressions. Final review complements rather than replaces the required Task and milestone reviews. Re-run affected validation after every accepted fix and independently re-review the changed boundary. Do not reverse the order or treat Cursor feedback as permission to expand the approved scope.
 
 If Cursor findings cause a code or behavior revision, rerun affected validation, independently re-review the changed boundary, then return to the Astra → Cursor final-review sequence. Cursor is final only when its last review causes no further revision.
 
-Write or reuse probes for critical success, failure, and fallback paths. When authorized, start the local service and send a real request through the intended dependency chain. Keep credentials out of artifacts and prompts; isolate test data by task-specific namespace or identifiers, and clean up only exact objects created by the task.
+Do not execute probes, start services, send real requests, or perform real-environment validation in this workflow. Preserve the approved Integration Test Design and hand the completed version, `REQ-*`/`AC-*` trace, actual primary-validation evidence, deployment/configuration prerequisites, and known limitations to `$code-to-integration-testing`. Invoke that explicit-only workflow after implementation and code review are complete when integration evidence is required. Do not treat unit, contract, or review evidence as a substitute for an approved real-environment test point.
 
 ## Cursor read-only review
 
@@ -60,4 +60,4 @@ python /path/to/spec-plan-to-code/scripts/cursor_review.py \
 
 ## Report and stop
 
-Deliver a test report mapping `REQ-*` → `AC-*` → evidence, with tests, probes, or real requests and `passed`, `failed`, `not-run`, or `blocked` status. Include actual commands, review dispositions, Deferred items, limits, rollback notes, and test-data cleanup. Claim completion only when all required work and validation actually meet the approved acceptance criteria.
+Deliver the implementation evidence mapping `REQ-*` → `AC-*` → unit/contract evidence, with `passed`, `failed`, `not-run`, or `blocked` status. Include actual commands, review dispositions, Deferred items, limits, rollback notes, and the explicit `$code-to-integration-testing` handoff. Claim implementation completion only when its required work and primary validation meet the approved acceptance criteria; reserve integration or real-environment completion claims for that workflow's test report.

@@ -11,7 +11,7 @@ Use the AI-native workflow only when you explicitly want its full decision and r
 ```mermaid
 flowchart LR
     RC["$requirement-council<br/>optional, Codex-only"] -. human-controlled selection; explicitly invoke next stage .-> R
-    R["$requirements-to-roadmap"] --> S["$roadmap-to-spec-plan"] --> C["$spec-plan-to-code"]
+    R["$requirements-to-roadmap"] --> S["$roadmap-to-spec-plan"] --> C["$spec-plan-to-code"] --> T["$code-to-integration-testing"]
     R -. optional discussion methods .-> B["brainstorming + grilling"]
     S -. selected review profile .-> I["$independent-review"]
     C -. selected review profile .-> I
@@ -33,8 +33,9 @@ The three existing workflow skills are explicit-only and unchanged. They do not 
 | [independent-review](./skills/independent-review/) | Shared evidence, scope, finding, and re-review standard for design, implementation, and concurrency profiles. | The caller selects the profile, `subagent` or `cursor` backend, model, and effort. It never makes those routing decisions. |
 | [requirement-council](./skills/requirement-council/) | Exploring feature-requirement text with three roles and presenting evidence-backed directions, risks, and missing facts. | **Optional, Codex-only** pre-workflow stage. It does not start or hand off automatically to the existing workflow; after a human selection, explicitly invoke `$requirements-to-roadmap` if desired. |
 | [requirements-to-roadmap](./skills/requirements-to-roadmap/) | Investigating a request, deciding scope, and producing a confirmed roadmap with `REQ-*`, `DEC-*`, `AC-*`, and Phase IDs. | Optional methods: `brainstorming` and `grilling`. It falls back to an equivalent in-skill method when either is unavailable. Its confirmed Phase ID is the input to `roadmap-to-spec-plan`. |
-| [roadmap-to-spec-plan](./skills/roadmap-to-spec-plan/) | Turning one confirmed roadmap phase into a Decision Package, Spec, executable Plan, acceptance matrix, and review ledger. | **Requires** a confirmed roadmap/Phase ID. It calls `independent-review` with `design` or `concurrency` profiles and explicitly selects Astra or Cursor. Its approved artifacts are the input to `spec-plan-to-code`. |
-| [spec-plan-to-code](./skills/spec-plan-to-code/) | Implementing an approved Decision Package, Spec, and Plan with change-type-appropriate tests, independent reviews, probes, runtime checks, and evidence. | **Requires** approved artifacts from `roadmap-to-spec-plan` and `coding-guidelines`. It calls `independent-review` with implementation/concurrency profiles and explicitly selects the reviewer backend, model, and effort. |
+| [roadmap-to-spec-plan](./skills/roadmap-to-spec-plan/) | Turning one confirmed roadmap phase into a Decision Package, Spec, executable Plan, acceptance matrix, Integration Test Design, and review ledger. | **Requires** a confirmed roadmap/Phase ID. Its approved artifacts, including test semantics and real-environment test points, are the input to `spec-plan-to-code`. |
+| [spec-plan-to-code](./skills/spec-plan-to-code/) | Implementing an approved Decision Package, Spec, Plan, and Integration Test Design with unit/contract validation and independent reviews. | **Requires** approved artifacts from `roadmap-to-spec-plan` and `coding-guidelines`. It hands implementation evidence to the explicit integration-testing workflow. |
+| [code-to-integration-testing](./skills/code-to-integration-testing/) | Expanding an approved Integration Test Design into cases, executing probes and real-environment checks, and reporting integration evidence. | **Requires** a completed implementation and approved Integration Test Design. It does not alter product code or acceptance semantics; defects return to `spec-plan-to-code` for repair. |
 
 Dependency terms:
 

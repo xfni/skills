@@ -11,7 +11,7 @@
 ```mermaid
 flowchart LR
     RC["$requirement-council<br/>可选，仅 Codex"] -. 人工选择并显式调用下一阶段 .-> R
-    R["$requirements-to-roadmap"] --> S["$roadmap-to-spec-plan"] --> C["$spec-plan-to-code"]
+    R["$requirements-to-roadmap"] --> S["$roadmap-to-spec-plan"] --> C["$spec-plan-to-code"] --> T["$code-to-integration-testing"]
     R -. 可选讨论方法 .-> B["brainstorming + grilling"]
     S -. 选择评审 profile .-> I["$independent-review"]
     C -. 选择评审 profile .-> I
@@ -33,8 +33,9 @@ flowchart LR
 | [independent-review](./skills/independent-review/) | 统一设计、实现和并发 profile 的证据、范围、发现与复审标准。 | 调用方选择 profile、`subagent` 或 `cursor`、模型与思考强度；本技能不做路由决定。 |
 | [requirement-council](./skills/requirement-council/) | 用三个角色探讨功能需求，并给出有证据支持的方向、风险和待补事实。 | **可选，仅 Codex** 的预工作流阶段。它不会自动启动或交接给现有工作流；人工选择后，如有需要显式调用 `$requirements-to-roadmap`。 |
 | [requirements-to-roadmap](./skills/requirements-to-roadmap/) | 定位现状、讨论范围并产出包含 `REQ-*`、`DEC-*`、`AC-*` 与 Phase ID 的确认 roadmap。 | 可选使用 `brainstorming` 与 `grilling`；缺失任一技能时使用内置等价方法。确认后的 Phase ID 交给 `roadmap-to-spec-plan`。 |
-| [roadmap-to-spec-plan](./skills/roadmap-to-spec-plan/) | 将一个已确认 roadmap 阶段转为决策包、Spec、可执行 Plan、验收矩阵和审阅台账。 | **必须依赖**确认后的 roadmap / Phase ID。调用 `independent-review` 的 `design` 或 `concurrency` profile，并显式选择 Astra 或 Cursor。已批准产物交给 `spec-plan-to-code`。 |
-| [spec-plan-to-code](./skills/spec-plan-to-code/) | 依据已批准决策包、Spec 和 Plan 实现代码，并保留按变更类型选择的测试、独立审阅、探针、运行时验证与证据。 | **必须依赖** `roadmap-to-spec-plan` 的批准产物和 `coding-guidelines`。调用 `independent-review` 的实现/并发 profile，并显式选择 reviewer backend、模型与思考强度。 |
+| [roadmap-to-spec-plan](./skills/roadmap-to-spec-plan/) | 将一个已确认 roadmap 阶段转为决策包、Spec、可执行 Plan、验收矩阵、集成测试设计和审阅台账。 | **必须依赖**确认后的 roadmap / Phase ID。已批准产物（含测试语义和真实环境测试点）交给 `spec-plan-to-code`。 |
+| [spec-plan-to-code](./skills/spec-plan-to-code/) | 依据已批准决策包、Spec、Plan 和集成测试设计实现代码，并保留单元/契约验证与独立审阅。 | **必须依赖** `roadmap-to-spec-plan` 的批准产物和 `coding-guidelines`；将实现证据交接给显式集成测试工作流。 |
+| [code-to-integration-testing](./skills/code-to-integration-testing/) | 将已批准集成测试设计展开为 case，执行探针与真实环境验证，并输出集成测试证据。 | **必须依赖**完成的实现和集成测试设计；不修改产品代码或验收语义，缺陷回到 `spec-plan-to-code` 修复。 |
 
 依赖术语：
 
