@@ -11,7 +11,10 @@
     "./skills/git-commit-convention",
     "./skills/coding-guidelines",
     "./skills/independent-review",
-    "./skills/requirements-to-roadmap",
+    "./skills/cursor-review",
+    "./skills/requirement-clarification",
+    "./skills/requirement-to-intent",
+    "./skills/intent-to-roadmap",
     "./skills/roadmap-to-spec-plan",
     "./skills/spec-plan-to-code"
   ]

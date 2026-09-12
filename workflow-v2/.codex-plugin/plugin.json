@@ -1,0 +1,30 @@
+{
+  "name": "ainative-flow-v2",
+  "version": "0.1.0",
+  "description": "Artifact-gated workflow with continuous orchestration from human brainstorming through integration evidence",
+  "author": {
+    "name": "nixiaofeng"
+  },
+  "license": "MIT",
+  "keywords": ["ai-native", "requirements", "intent", "roadmap", "tdd", "integration"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "AI-Native Flow V2",
+    "shortDescription": "Requirement-to-integration workflow",
+    "longDescription": "A continuous orchestrator plus eight explicit stages with human brainstorming and intent confirmation, traceable artifacts, TDD implementation, and separate integration evidence.",
+    "developerName": "nixiaofeng",
+    "category": "Productivity",
+    "capabilities": ["Write"],
+    "defaultPrompt": [
+      "Use $flow-run to detect and continuously orchestrate the Flow v2 stages.",
+      "Use $flow-brainstorm inside requirement exploration.",
+      "Use $flow-requirement to produce requirement.md.",
+      "Use $flow-intent to confirm intent.md.",
+      "Use $flow-roadmap to create roadmap.md.",
+      "Use $flow-spec for one selected milestone.",
+      "Use $flow-plan to create an executable plan.md.",
+      "Use $flow-code for TDD implementation and unit tests.",
+      "Use $flow-integration for cross-boundary verification."
+    ]
+  }
+}

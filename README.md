@@ -10,9 +10,12 @@ Use the AI-native workflow only when you explicitly want its full decision and r
 
 ```mermaid
 flowchart LR
-    RC["$requirement-council<br/>optional, Codex-only"] -. human-controlled selection; explicitly invoke next stage .-> R
-    R["$requirements-to-roadmap"] --> S["$roadmap-to-spec-plan"] --> C["$spec-plan-to-code"]
-    R -. optional discussion methods .-> B["brainstorming + grilling"]
+    D["direct discussion"] --> I["$requirement-to-intent"]
+    RC["$requirement-council<br/>optional, Codex-only"] --> I
+    Q["$requirement-clarification<br/>optional grilling"] --> I
+    RC --> Q
+    I -. human-confirmed intent.md .-> R["$intent-to-roadmap"]
+    R --> S["$roadmap-to-spec-plan"] --> C["$spec-plan-to-code"]
     S -. selected review profile .-> I["$independent-review"]
     C -. selected review profile .-> I
     C --> CG["coding-guidelines"]
@@ -20,9 +23,11 @@ flowchart LR
     C -. optional read-only final review .-> CU
 ```
 
-`requirement-council` is an optional, Codex-only pre-workflow stage for non-empty feature-requirement text, from a vague sentence to a multi-line draft. Its three evidence-backed roles examine user value, minimum delivery/reframing, and concrete risk. It stops before roadmap, specification, planning, or implementation; the human controls whether to use its result and must explicitly invoke `$requirements-to-roadmap` afterward.
+`requirement-to-intent` is the common gate before roadmap. The human may choose Council, clarification, both, or direct discussion. Council writes a candidate `requirement.md`; clarification wraps `grilling` when available and records human decisions in that artifact; only the intent gate writes a human-confirmed `intent.md`.
 
-The three existing workflow skills are explicit-only and unchanged. They do not start each other automatically: finish and confirm one handoff before invoking the next.
+After an issue key is provided, the intent gate reads PMS once and shares that immutable snapshot with the selected route. If sandboxed network access fails, it requests permission for one read-only escalated retry; denial or failure is recorded as `PMS_UNAVAILABLE` without exposing credentials.
+
+All workflow skills are explicit-only. Optional requirement methods are orchestrated only when selected; downstream stages never start automatically.
 
 ## Skills and dependencies
 
@@ -31,8 +36,11 @@ The three existing workflow skills are explicit-only and unchanged. They do not 
 | [git-commit-convention](./skills/git-commit-convention/) | Keeping a local commit scoped, documented, and in the required Chinese commit format. | Independent. Requires a Git repository and an issue identifier for a commit. |
 | [coding-guidelines](./skills/coding-guidelines/) | Writing or reviewing code without speculative abstractions, scope creep, unsafe boundaries, or half-finished migrations. | Baseline for implementation and review. **Required** by `spec-plan-to-code`. |
 | [independent-review](./skills/independent-review/) | Shared evidence, scope, finding, and re-review standard for design, implementation, and concurrency profiles. | The caller selects the profile, `subagent` or `cursor` backend, model, and effort. It never makes those routing decisions. |
-| [requirement-council](./skills/requirement-council/) | Exploring feature-requirement text with three roles and presenting evidence-backed directions, risks, and missing facts. | **Optional, Codex-only** pre-workflow stage. It does not start or hand off automatically to the existing workflow; after a human selection, explicitly invoke `$requirements-to-roadmap` if desired. |
-| [requirements-to-roadmap](./skills/requirements-to-roadmap/) | Investigating a request, deciding scope, and producing a confirmed roadmap with `REQ-*`, `DEC-*`, `AC-*`, and Phase IDs. | Optional methods: `brainstorming` and `grilling`. It falls back to an equivalent in-skill method when either is unavailable. Its confirmed Phase ID is the input to `roadmap-to-spec-plan`. |
+| [cursor-review](./skills/cursor-review/) | Checking the Cursor connection and running one bounded read-only repository review. | Requires explicit selection, `cursor_sdk`, and a Cursor API key. Calling workflows own the profile and finding disposition. |
+| [requirement-council](./skills/requirement-council/) | Running a contextual agent-to-agent requirement discussion and presenting evidence-backed choices, risks, and missing facts. | **Optional, Codex-only** stage with the root plus two child roles. It writes candidate `requirement.md`; `$requirement-to-intent` owns the handoff. |
+| [requirement-clarification](./skills/requirement-clarification/) | Aligning an existing `requirement.md` with the human through `grilling` or a built-in fallback. | Optional before intent. It updates the requirement revision but never creates intent or roadmap. |
+| [requirement-to-intent](./skills/requirement-to-intent/) | Choosing a requirement path and producing the authoritative, human-confirmed `intent.md`. | Required gate before roadmap. It can orchestrate Council, clarification, both, or direct discussion. |
+| [intent-to-roadmap](./skills/intent-to-roadmap/) | Turning a confirmed intent into a roadmap with `REQ-*`, `DEC-*`, `AC-*`, and Phase IDs. | Requires `intent.md` with `status: CONFIRMED`; it may not reinterpret intent scope, non-goals, or invariants. |
 | [roadmap-to-spec-plan](./skills/roadmap-to-spec-plan/) | Turning one confirmed roadmap phase into a Decision Package, Spec, executable Plan, acceptance matrix, and review ledger. | **Requires** a confirmed roadmap/Phase ID. It calls `independent-review` with `design` or `concurrency` profiles and explicitly selects Astra or Cursor. Its approved artifacts are the input to `spec-plan-to-code`. |
 | [spec-plan-to-code](./skills/spec-plan-to-code/) | Implementing an approved Decision Package, Spec, and Plan with change-type-appropriate tests, independent reviews, probes, runtime checks, and evidence. | **Requires** approved artifacts from `roadmap-to-spec-plan` and `coding-guidelines`. It calls `independent-review` with implementation/concurrency profiles and explicitly selects the reviewer backend, model, and effort. |
 
@@ -48,11 +56,13 @@ Dependency terms:
 |---|---|
 | [Claude Code](https://claude.ai/code) with plugin support | Installing this repository as a Claude Code plugin. |
 | [Codex](https://openai.com/codex/) | Installing or linking selected directories into `~/.codex/skills/`. Explicit-only workflow metadata is included. |
-| [Cursor](https://cursor.com/) plus a Python environment where `cursor_sdk` is available | Optional external read-only review in `roadmap-to-spec-plan` and `spec-plan-to-code`. Not needed for the normal workflow. |
-| Cursor API key at `~/.cursor-review/API_KEY` | Only when invoking the supplied Cursor review scripts. Keep the key out of repositories and prompts. |
-| `brainstorming` and `grilling` skills | Optional, recommended for richer requirement discussion. `requirements-to-roadmap` degrades safely when they are absent. |
+| [Cursor](https://cursor.com/) plus a Python environment where `cursor_sdk` is available | `$cursor-review`, optionally invoked by review workflows. Not needed for the normal workflow. |
+| Cursor API key at `~/.cursor-review/API_KEY` | Only when invoking `$cursor-review`. Keep the key out of repositories and prompts. |
+| `grilling` skill | Optional engine used by `requirement-clarification`; that skill provides a built-in fallback when it is absent. |
+| `brainstorming` guidance | Optional source for richer alternative generation; Requirement Council includes the required comparison core and does not depend on it. |
+| `pms-issue-reader` skill and PMS access | Used once by `requirement-to-intent` after issue validation; sandboxed environments may prompt for read-only network permission. |
 | Configured reviewer models | The workflow references Astra and other independent-review models. Make equivalent authorized reviewer capacity available in the host runtime. |
-| Requirement Council (Codex only) | Requires three custom Agent TOMLs installed globally. At each run, the moderator selects one offered model/effort profile and passes it at child creation; read-only behavior is protocol-constrained unless the host attests enforcement. |
+| Requirement Council (Codex only) | Requires two custom Agent TOMLs installed globally. At each run, the moderator selects one offered model/effort profile and passes it at child creation; read-only behavior is protocol-constrained unless the host attests enforcement. |
 
 Requirement Council defaults to a standard before/after repository snapshot and can use an audited mode on request. Where the host cannot attest read-only enforcement, results are protocol-constrained rather than treated as a failed discussion; a detected repository change ends the run.
 
@@ -70,19 +80,18 @@ Requirement Council defaults to a standard before/after repository snapshot and 
 The repository exposes the shared `skills/` directory through `.codex-plugin/plugin.json`. Until a marketplace entry is available, clone this repository and copy or link the skills you want into `~/.codex/skills/`.
 
 ```bash
-ln -s "$(pwd)/skills/requirements-to-roadmap" ~/.codex/skills/requirements-to-roadmap
+ln -s "$(pwd)/skills/intent-to-roadmap" ~/.codex/skills/intent-to-roadmap
 ```
 
-Repeat for each desired skill. Keep the workflow skills explicit-only; invoke them by name, for example `$requirements-to-roadmap`.
+Repeat for each desired skill. Keep the workflow skills explicit-only; invoke them by name, for example `$intent-to-roadmap`.
 
 #### Requirement Council (personal Codex installation)
 
 Requirement Council uses personal Codex Agents rather than project-scoped Agents. Complete both installation steps:
 
 1. Copy or link `skills/requirement-council` to `~/.codex/skills/requirement-council`.
-2. Copy all three standalone Agent TOMLs from `skills/requirement-council/agents/` to `~/.codex/agents/`:
-   - `requirement-council-user-value-explorer.toml`
-   - `requirement-council-minimal-delivery-reframer.toml`
+2. Copy both standalone Agent TOMLs from `skills/requirement-council/agents/` to `~/.codex/agents/`:
+   - `requirement-council-value-boundary-explorer.toml`
    - `requirement-council-risk-counterexample-critic.toml`
 
 For example, from the repository root:
@@ -90,14 +99,13 @@ For example, from the repository root:
 ```bash
 mkdir -p ~/.codex/skills ~/.codex/agents
 ln -s "$(pwd)/skills/requirement-council" ~/.codex/skills/requirement-council
-cp skills/requirement-council/agents/requirement-council-user-value-explorer.toml ~/.codex/agents/requirement-council-user-value-explorer.toml
-cp skills/requirement-council/agents/requirement-council-minimal-delivery-reframer.toml ~/.codex/agents/requirement-council-minimal-delivery-reframer.toml
+cp skills/requirement-council/agents/requirement-council-value-boundary-explorer.toml ~/.codex/agents/requirement-council-value-boundary-explorer.toml
 cp skills/requirement-council/agents/requirement-council-risk-counterexample-critic.toml ~/.codex/agents/requirement-council-risk-counterexample-critic.toml
 ```
 
 Start a fresh Codex session after installing or updating the Agent TOMLs so personal-Agent discovery reloads them.
 
-Invoke it explicitly with non-empty requirement text. The text may span one or more lines; no issue identifier is required:
+Invoke it explicitly with a feature topic. The root uses relevant prior conversation as the requirement context, so the invocation need not repeat the complete requirement:
 
 ```text
 $requirement-council
@@ -106,11 +114,11 @@ The initial idea is a personal saved-filter list; team sharing is not yet decide
 Existing permissions must continue to control which records are visible.
 ```
 
-This Skill is intentionally absent from the Claude Code plugin. The four Agents are not installed globally through `.codex-plugin/plugin.json`; install them through the two personal Codex steps above. A council run never automatically invokes or hands off to another Skill.
+This Skill is intentionally absent from the Claude Code plugin. Its two child Agents are not installed globally through `.codex-plugin/plugin.json`; install them through the two personal Codex steps above. Council writes only a candidate `requirement.md`; use `$requirement-to-intent` for the explicit handoff into the workflow.
 
 ### Cursor review setup (optional)
 
-The two workflow skills include a bounded, read-only `cursor_review.py`. Configure Cursor and the `cursor_sdk` bridge, generate an API key in Cursor, then save only that key in `~/.cursor-review/API_KEY`. The scripts default to `grok-4.6` with `high` effort and never grant Cursor write or shell tools.
+`$cursor-review` owns the bounded, read-only runner. Configure Cursor and the `cursor_sdk` bridge, generate an API key in Cursor, then save only that key in `~/.cursor-review/API_KEY`. Run its `scripts/cursor_review.py --check` diagnostic before the first review. It defaults to `grok-4.6` with `high` effort and never grants Cursor write or shell tools.
 
 ## License
 

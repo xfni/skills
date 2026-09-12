@@ -11,6 +11,8 @@ Use this explicit-only workflow to implement an approved Decision Package, Spec,
 
 **REQUIRED SUB-SKILL:** Every independent review in this workflow must use `independent-review` with the `implementation` profile, or the `concurrency` profile when the changed boundary has shared state, locks, async/cross-thread execution, cancellation, or lifecycle risk. This workflow—not `independent-review`—selects `subagent` versus `cursor`, model, and effort.
 
+**REQUIRED SUB-SKILL:** Use `cursor-review` for every `backend: cursor` connection check and review run. This workflow still owns the implementation profile, brief, ordering, final evidence, and finding disposition.
+
 ## Hold the baseline and record progress
 
 Confirm the worktree, approved artifact versions, selected Phase ID, task and acceptance IDs, existing user changes, authorization, and test environment before editing. Preserve the approved scope. Record any new public interface, compatibility, data-policy, or capability request as a Scope Delta; seek approval or defer it. Do not treat reviewer agreement as human approval.
@@ -47,16 +49,7 @@ Write or reuse probes for critical success, failure, and fallback paths. When au
 
 ## Cursor read-only review
 
-Use [scripts/cursor_review.py](scripts/cursor_review.py) only after external review is authorized and configured. The default model is `grok-4.6` with `high` effort, and the default key file is `~/.cursor-review/API_KEY`. Before the first review, check that file. If it is missing or empty, show this reminder and wait for confirmation before retrying:
-
-> Cursor API key is not configured at `~/.cursor-review/API_KEY`. Generate an API key in Cursor, save only the key to that file, then tell me when it is ready.
-
-Never print, commit, or add the key to a prompt. Use `--api-key-file`, `--model`, or `--effort` only when a task explicitly needs an override. The script is read-only (`read`, `grep`, `glob`, `ls`) and returns a terminal report or an incomplete status. Keep its agent/run IDs, coverage version, findings, and dispositions in the final evidence.
-
-```bash
-python /path/to/spec-plan-to-code/scripts/cursor_review.py \
-  /absolute/path/to/repository /absolute/path/to/review-brief.md
-```
+After external review is authorized, invoke `$cursor-review` with the repository/worktree and an `implementation`-profile brief containing the frozen baseline, changed boundary, linked IDs, and actual validation evidence. Use its default `grok-4.6`/`high` configuration unless this workflow explicitly selects an override. Keep its agent/run IDs, covered version, report, findings, and dispositions in final evidence. `INCOMPLETE` is an assurance gap, not approval.
 
 ## Report and stop
 

@@ -1,0 +1,6 @@
+interface:
+  display_name: Intent to Roadmap
+  short_description: Turn a confirmed intent into delivery phases.
+  default_prompt: Use $intent-to-roadmap to turn this confirmed intent.md into a roadmap.
+policy:
+  allow_implicit_invocation: false

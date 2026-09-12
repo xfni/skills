@@ -1,0 +1,6 @@
+interface:
+  display_name: "Flow Run"
+  short_description: "Run or resume the complete AI-native Flow v2 workflow"
+  default_prompt: "Use $flow-run to detect the deepest valid checkpoint and orchestrate the remaining Flow v2 stages."
+policy:
+  allow_implicit_invocation: false

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Flow Integration"
+  short_description: "Validate implemented behavior across system boundaries"
+  default_prompt: "Use $flow-integration to execute the approved INT scenarios."
+policy:
+  allow_implicit_invocation: false

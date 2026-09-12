@@ -1,5 +1,9 @@
 from pathlib import Path
+import os
 import re
+import subprocess
+import sys
+import tempfile
 import unittest
 
 try:
@@ -11,13 +15,21 @@ except ModuleNotFoundError:  # Python 3.10
 ROOT = Path(__file__).resolve().parents[1]
 SKILLS_ROOT = ROOT / "skills"
 SKILLS = (
-    "requirements-to-roadmap",
+    "requirement-clarification",
+    "requirement-to-intent",
+    "intent-to-roadmap",
     "roadmap-to-spec-plan",
     "spec-plan-to-code",
 )
 REVIEW_SKILL = "independent-review"
-CURSOR_SKILLS = SKILLS[1:]
+CURSOR_REVIEW_SKILL = "cursor-review"
+CURSOR_SKILLS = (
+    "roadmap-to-spec-plan",
+    "spec-plan-to-code",
+)
 REQUIREMENT_COUNCIL_SKILL = "requirement-council"
+REQUIREMENT_CLARIFICATION_SKILL = "requirement-clarification"
+REQUIREMENT_TO_INTENT_SKILL = "requirement-to-intent"
 REQUIREMENT_COUNCIL_AGENTS = {
     "requirement-council-user-value-explorer.toml": {
         "name": "requirement_council_user_value_explorer",
@@ -67,30 +79,69 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
             self.assertIn(f"name: {name}", skill.read_text())
             self.assertIn("allow_implicit_invocation: false", metadata.read_text())
 
-    def test_cursor_review_scripts_are_portable_and_read_only(self):
+    def test_cursor_review_has_single_portable_read_only_runner(self):
         forbidden = ("/Users/nixiaofeng",)
-        scripts = []
+        script = SKILLS_ROOT / CURSOR_REVIEW_SKILL / "scripts" / "cursor_review.py"
+        text = script.read_text()
+        self.assertTrue(script.is_file())
+        self.assertIn("--api-key-file", text)
+        self.assertIn('DEFAULT_API_KEY_FILE = Path.home() / ".cursor-review" / "API_KEY"', text)
+        self.assertIn('DEFAULT_MODEL = "grok-4.6"', text)
+        self.assertIn('DEFAULT_EFFORT = "high"', text)
+        self.assertIn("INCOMPLETE: Cursor SDK is unavailable", text)
+        self.assertIn("INCOMPLETE: Cursor API key is not configured", text)
+        self.assertIn('mode="plan"', text)
+        self.assertIn('tools=READ_ONLY_TOOLS', text)
+        self.assertEqual(["read", "grep", "glob", "ls"], __import__("ast").literal_eval(re.search(r"READ_ONLY_TOOLS = (\[[^\n]+\])", text).group(1)))
+        for value in forbidden:
+            self.assertNotIn(value, text)
         for name in CURSOR_SKILLS:
-            script = SKILLS_ROOT / name / "scripts" / "cursor_review.py"
-            text = script.read_text()
-            scripts.append(text)
-            self.assertTrue(script.is_file())
-            self.assertIn("--api-key-file", text)
-            self.assertIn('DEFAULT_API_KEY_FILE = Path.home() / ".cursor-review" / "API_KEY"', text)
-            self.assertIn('DEFAULT_MODEL = "grok-4.6"', text)
-            self.assertIn('DEFAULT_EFFORT = "high"', text)
-            self.assertIn("default=DEFAULT_API_KEY_FILE", text)
-            self.assertIn("default=DEFAULT_MODEL", text)
-            self.assertIn("default=DEFAULT_EFFORT", text)
-            self.assertNotIn('"--api-key-file", required=True', text)
-            self.assertIn("Cursor API key is not configured", text)
-            self.assertIn("INCOMPLETE: Cursor API key is not configured", text)
-            self.assertNotIn("raise RuntimeError(", text)
-            self.assertIn('mode="plan"', text)
-            self.assertIn('tools=["read", "grep", "glob", "ls"]', text)
-            for value in forbidden:
-                self.assertNotIn(value, text)
-        self.assertEqual(scripts[0], scripts[1])
+            self.assertFalse((SKILLS_ROOT / name / "scripts" / "cursor_review.py").exists())
+
+    def test_cursor_review_reports_missing_sdk_without_traceback(self):
+        script = SKILLS_ROOT / CURSOR_REVIEW_SKILL / "scripts" / "cursor_review.py"
+        result = subprocess.run(
+            [sys.executable, str(script), "--check"],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertIn(result.returncode, (0, 2))
+        self.assertNotIn("Traceback", result.stderr + result.stdout)
+        if result.returncode == 2:
+            self.assertIn("INCOMPLETE:", result.stderr + result.stdout)
+
+    def test_cursor_review_is_registered_and_explicit_only(self):
+        claude_manifest = (ROOT / ".claude-plugin" / "plugin.json").read_text()
+        codex_manifest = (ROOT / ".codex-plugin" / "plugin.json").read_text()
+        metadata = (SKILLS_ROOT / CURSOR_REVIEW_SKILL / "agents" / "openai.yaml").read_text()
+        self.assertIn('"./skills/cursor-review"', claude_manifest)
+        self.assertIn('"skills": "./skills/"', codex_manifest)
+        self.assertIn("allow_implicit_invocation: false", metadata)
+        self.assertIn("$cursor-review", metadata)
+
+    def test_cursor_review_reports_invalid_input_without_traceback(self):
+        script = SKILLS_ROOT / CURSOR_REVIEW_SKILL / "scripts" / "cursor_review.py"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            (temp / "cursor_sdk.py").write_text(
+                "AgentOptions=Client=LocalAgentOptions=ModelParameterValue=ModelSelection=SendOptions=object\n"
+            )
+            key = temp / "API_KEY"
+            key.write_text("test-key")
+            prompt = temp / "brief.md"
+            prompt.write_text("review")
+            env = dict(os.environ, PYTHONPATH=temp_dir)
+            result = subprocess.run(
+                [sys.executable, str(script), str(temp / "missing-repo"), str(prompt), "--api-key-file", str(key)],
+                text=True,
+                capture_output=True,
+                check=False,
+                env=env,
+            )
+        self.assertEqual(2, result.returncode)
+        self.assertIn("INCOMPLETE: Cursor review input is unavailable", result.stderr + result.stdout)
+        self.assertNotIn("Traceback", result.stderr + result.stdout)
 
     def test_readmes_document_all_workflow_skills(self):
         for readme in (ROOT / "README.md", ROOT / "README.zh.md"):
@@ -101,10 +152,8 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
     def test_cursor_workflows_document_the_default_configuration(self):
         for name in CURSOR_SKILLS:
             text = (SKILLS_ROOT / name / "SKILL.md").read_text()
-            self.assertIn("`~/.cursor-review/API_KEY`", text)
-            self.assertIn("`grok-4.6`", text)
-            self.assertIn("`high`", text)
-            self.assertIn("Cursor API key is not configured at `~/.cursor-review/API_KEY`", text)
+            self.assertIn("**REQUIRED SUB-SKILL:** Use `cursor-review`", text)
+            self.assertNotIn("scripts/cursor_review.py", text)
 
     def test_code_workflow_requires_independent_task_and_milestone_reviews(self):
         text = (SKILLS_ROOT / "spec-plan-to-code" / "SKILL.md").read_text()
@@ -147,7 +196,7 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
             self.assertIn(value, code)
 
     def test_workflow_handoff_preserves_requirement_phase_and_evidence_traceability(self):
-        roadmap = (SKILLS_ROOT / "requirements-to-roadmap" / "SKILL.md").read_text()
+        roadmap = (SKILLS_ROOT / "intent-to-roadmap" / "SKILL.md").read_text()
         spec_plan = (SKILLS_ROOT / "roadmap-to-spec-plan" / "SKILL.md").read_text()
         code = (SKILLS_ROOT / "spec-plan-to-code" / "SKILL.md").read_text()
         self.assertIn("Requirement ID", roadmap)
@@ -262,13 +311,12 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
         self.assertIn("MIT License", license_file.read_text())
 
     def test_requirement_council_rework_contract(self):
-        """BCS-696: standard council stays useful within root + three-child capacity."""
+        """BCS-710: root participates while two children deliberate for 3-8 rounds."""
         skill_root = SKILLS_ROOT / REQUIREMENT_COUNCIL_SKILL
         text = (skill_root / "SKILL.md").read_text()
         agents_root = skill_root / "agents"
         expected_agents = {
-            "requirement-council-user-value-explorer.toml": "requirement_council_user_value_explorer",
-            "requirement-council-minimal-delivery-reframer.toml": "requirement_council_minimal_delivery_reframer",
+            "requirement-council-value-boundary-explorer.toml": "requirement_council_value_boundary_explorer",
             "requirement-council-risk-counterexample-critic.toml": "requirement_council_risk_counterexample_critic",
         }
 
@@ -282,16 +330,18 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
             self.assertNotIn("model_reasoning_effort", config)
             self.assertNotIn("sandbox_mode", config)
 
-        reframer = tomllib.loads(
-            (agents_root / "requirement-council-minimal-delivery-reframer.toml").read_text()
+        explorer = tomllib.loads(
+            (agents_root / "requirement-council-value-boundary-explorer.toml").read_text()
         )["developer_instructions"].lower()
         for phrase in (
+            "affected user",
+            "desired outcome",
             "smallest deliverable boundary",
             "challenge the problem framing",
             "process or no-build",
             "future",
         ):
-            self.assertIn(phrase, reframer)
+            self.assertIn(phrase, explorer)
 
         for value in (
             "gpt-5.6-sol", "low", "12 minutes",
@@ -301,19 +351,83 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
             "fork_turns=none", "model", "reasoning_effort",
             "council-standard", "council-audited", "PROTOCOL_CONSTRAINED",
             "before and after", "REPOSITORY_CHANGED",
-            "original_request", "human_context", "repository_scope",
+            "original_request", "conversation_context", "repository_scope",
             "soft deadline", "one 4-minute extension",
-            "two rounds", "blocking objection",
-            "READY_FOR_SELECTION", "MORE_EVIDENCE_NEEDED", "NO_BUILD_RECOMMENDED",
+            "at least three and at most eight numbered rounds",
+            "Round 1", "Rounds 2 through 8", "no_material_delta",
+            "blocking objection", "two consecutive rounds",
+            "READY_FOR_SELECTION", "MORE_EVIDENCE_NEEDED", "HUMAN_DECISION_REQUIRED",
+            "NO_BUILD_RECOMMENDED", "MAX_ROUNDS_UNRESOLVED",
             "directions", "blocking_objections", "changed_my_mind",
             "product direction", "implementation constraints",
             "do not select the default", "wait for the human to choose",
             "Do not snapshot, inspect repositories, or spawn",
             "minimum requirement checklist", "unresolved requirement-critical question",
             "brainstorming core", "alternatives and trade-offs",
+            "product proxy", "not human authorization",
+            "two or three", "OPTION-*", "Rejected alternatives",
         ):
             self.assertIn(value, text)
         self.assertNotIn("packet_hash", text)
+
+    def test_bcs_710_requirement_intent_gate_contract(self):
+        council = self._requirement_council_skill_text()
+        clarification_root = SKILLS_ROOT / REQUIREMENT_CLARIFICATION_SKILL
+        intent_root = SKILLS_ROOT / REQUIREMENT_TO_INTENT_SKILL
+
+        self.assertTrue((clarification_root / "SKILL.md").is_file())
+        self.assertTrue((intent_root / "SKILL.md").is_file())
+        clarification = (clarification_root / "SKILL.md").read_text()
+        intent = (intent_root / "SKILL.md").read_text()
+
+        for root, name in (
+            (clarification_root, REQUIREMENT_CLARIFICATION_SKILL),
+            (intent_root, REQUIREMENT_TO_INTENT_SKILL),
+        ):
+            metadata = (root / "agents" / "openai.yaml").read_text()
+            self.assertIn(f"name: {name}", (root / "SKILL.md").read_text())
+            self.assertIn("allow_implicit_invocation: false", metadata)
+
+        for value in (
+            "requirement.md", "DRAFT", "READY_FOR_CLARIFICATION",
+            "two or three", "human-confirmed",
+            "READY_FOR_SELECTION", "maps to `READY_FOR_CLARIFICATION`",
+        ):
+            self.assertIn(value, council)
+
+        for value in (
+            "requirement.md", "grilling", "built-in fallback",
+            "Clarification Decisions", "revision", "CONFIRMED", "BLOCKED",
+            "must not run Requirement Council",
+        ):
+            self.assertIn(value, clarification)
+
+        for value in (
+            "Council only", "Clarification only", "Council + Clarification",
+            "Direct discussion", "conversation history", "intent.md",
+            "READY_FOR_CONFIRMATION", "CONFIRMED", "BLOCKED",
+            "explicit human confirmation", "only skill allowed to create",
+            ".ai/requirements/<issue>-<topic>/requirement.md",
+            "Reuse it without asking twice", "incremented revision",
+            "For any other outcome, stop",
+            "pms-issue-reader", "exactly once", "issue_context",
+            "sandbox_permissions", "require_escalated",
+            "DNS", "network", "PMS_UNAVAILABLE",
+            "untrusted issue data", "must not expose credentials",
+            "Human Alignment Loop", "intent-changing decision nodes",
+            "Decision Card", "two or three genuine options",
+            "Scope and Non-goals impact", "one high-leverage question",
+            "lightweight counterexample check", "no new evidence",
+            "Remaining Unknowns", "deep grilling",
+        ):
+            self.assertIn(value, intent)
+
+        roadmap = (SKILLS_ROOT / "intent-to-roadmap" / "SKILL.md").read_text()
+        for value in (
+            "intent.md", "status: CONFIRMED", "requirement-to-intent",
+            "must not reinterpret", "Scope", "Non-goals", "Invariants",
+        ):
+            self.assertIn(value, roadmap)
 
     @unittest.skip("Superseded by the BCS-696 standard/audited council contract.")
     def test_requirement_council_skill_is_explicit_only_and_instruction_only(self):
@@ -570,7 +684,7 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
             "concise decision trace using stable IDs",
             "must wait for explicit human selection or rejection",
             "Requirement Direction Brief",
-            "$requirements-to-roadmap",
+            "$intent-to-roadmap",
             "must not be written to the repository",
         ):
             self.assertIn(value, text)

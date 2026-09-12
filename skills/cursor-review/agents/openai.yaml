@@ -1,0 +1,6 @@
+interface:
+  display_name: "Cursor Review"
+  short_description: "Run a bounded read-only Cursor review"
+  default_prompt: "Use $cursor-review to check the Cursor connection or run a bounded read-only repository review."
+policy:
+  allow_implicit_invocation: false

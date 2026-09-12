@@ -20,7 +20,9 @@
     "capabilities": ["Write"],
     "websiteURL": "https://github.com/xfni/skills",
     "defaultPrompt": [
-      "Use requirements-to-roadmap to discuss this requirement.",
+      "Use cursor-review for a bounded read-only Cursor review.",
+      "Use requirement-to-intent to confirm this requirement's intent.",
+      "Use intent-to-roadmap to phase the confirmed intent.",
       "Use roadmap-to-spec-plan to produce reviewed artifacts.",
       "Use spec-plan-to-code to implement the approved plan."
     ]

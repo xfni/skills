@@ -1,0 +1,6 @@
+interface:
+  display_name: "Requirement to Intent"
+  short_description: "Confirm the intent before roadmap work"
+  default_prompt: "Use $requirement-to-intent to choose a requirement path and produce intent.md."
+policy:
+  allow_implicit_invocation: false

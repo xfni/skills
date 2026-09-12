@@ -1,0 +1,6 @@
+interface:
+  display_name: "Requirement Clarification"
+  short_description: "Align a requirement with the human"
+  default_prompt: "Use $requirement-clarification to clarify this requirement.md with me."
+policy:
+  allow_implicit_invocation: false

@@ -10,9 +10,12 @@
 
 ```mermaid
 flowchart LR
-    RC["$requirement-council<br/>可选，仅 Codex"] -. 人工选择并显式调用下一阶段 .-> R
-    R["$requirements-to-roadmap"] --> S["$roadmap-to-spec-plan"] --> C["$spec-plan-to-code"]
-    R -. 可选讨论方法 .-> B["brainstorming + grilling"]
+    D["直接讨论"] --> I["$requirement-to-intent"]
+    RC["$requirement-council<br/>可选，仅 Codex"] --> I
+    Q["$requirement-clarification<br/>可选 grilling"] --> I
+    RC --> Q
+    I -. 人工确认的 intent.md .-> R["$intent-to-roadmap"]
+    R --> S["$roadmap-to-spec-plan"] --> C["$spec-plan-to-code"]
     S -. 选择评审 profile .-> I["$independent-review"]
     C -. 选择评审 profile .-> I
     C --> CG["coding-guidelines"]
@@ -20,9 +23,11 @@ flowchart LR
     C -. 可选只读终审 .-> CU
 ```
 
-`requirement-council` 是面对非空功能需求文本的可选、仅 Codex 预工作流阶段；输入既可以是一句模糊需求，也可以是多行初稿。三个角色分别审视用户价值、最小交付/重构与具体风险，供人工选择。它在 roadmap、Spec、Plan 或实现之前结束；是否采用其结果由人工决定，之后如有需要，必须显式调用 `$requirements-to-roadmap`。
+`requirement-to-intent` 是 roadmap 前的统一门。人工可选 Council、需求澄清、两者或直接讨论。Council 写入候选 `requirement.md`；需求澄清在可用时包装 `grilling`，并将人工决策记入该产物；只有 Intent Gate 可以写入人工确认的 `intent.md`。
 
-现有三个工作流技能保持不变，且均为仅显式调用：它们不会自动串联。一个阶段完成并由人工确认交接后，再调用下一个技能。
+提供 issue key 后，Intent Gate 会读取一次 PMS，并把该不可变快照共享给选定路径。如果沙箱网络访问失败，它会为一次只读的提权重试申请权限；拒绝或再次失败会记为 `PMS_UNAVAILABLE`，且不暴露凭据。
+
+所有工作流技能均为仅显式调用。可选需求方法只在人工选择时由 Intent Gate 编排；后续阶段不会自动启动。
 
 ## 技能与依赖
 
@@ -31,8 +36,11 @@ flowchart LR
 | [git-commit-convention](./skills/git-commit-convention/) | 让本地提交保持需求范围清晰、关联文档完整，并遵循中文提交信息格式。 | 独立使用。需要 Git 仓库；提交时需要 issue 编号。 |
 | [coding-guidelines](./skills/coding-guidelines/) | 编码与审阅时避免推测性抽象、范围蔓延、不安全边界和半迁移。 | 实现与审阅的基线。`spec-plan-to-code` **必须依赖**。 |
 | [independent-review](./skills/independent-review/) | 统一设计、实现和并发 profile 的证据、范围、发现与复审标准。 | 调用方选择 profile、`subagent` 或 `cursor`、模型与思考强度；本技能不做路由决定。 |
-| [requirement-council](./skills/requirement-council/) | 用三个角色探讨功能需求，并给出有证据支持的方向、风险和待补事实。 | **可选，仅 Codex** 的预工作流阶段。它不会自动启动或交接给现有工作流；人工选择后，如有需要显式调用 `$requirements-to-roadmap`。 |
-| [requirements-to-roadmap](./skills/requirements-to-roadmap/) | 定位现状、讨论范围并产出包含 `REQ-*`、`DEC-*`、`AC-*` 与 Phase ID 的确认 roadmap。 | 可选使用 `brainstorming` 与 `grilling`；缺失任一技能时使用内置等价方法。确认后的 Phase ID 交给 `roadmap-to-spec-plan`。 |
+| [cursor-review](./skills/cursor-review/) | 检查 Cursor 连接并执行一次有边界的只读仓库审阅。 | 必须显式选择，并依赖 `cursor_sdk` 与 Cursor API key；调用方负责 profile 和发现处置。 |
+| [requirement-council](./skills/requirement-council/) | 执行带对话上下文的 Agent 间需求讨论，并给出有证据支持的方案、风险和待补事实。 | **可选，仅 Codex** 阶段，由主 Agent 和两个子角色组成。它写入候选 `requirement.md`；由 `$requirement-to-intent` 负责交接。 |
+| [requirement-clarification](./skills/requirement-clarification/) | 通过 `grilling` 或内置回退流程，与人工对齐已有 `requirement.md`。 | Intent 前的可选阶段；它更新需求 revision，但不创建 Intent 或 roadmap。 |
+| [requirement-to-intent](./skills/requirement-to-intent/) | 选择需求路径，并产出权威的、人工确认的 `intent.md`。 | Roadmap 前的必经门；可编排 Council、需求澄清、两者或直接讨论。 |
+| [intent-to-roadmap](./skills/intent-to-roadmap/) | 将已确认 Intent 转为包含 `REQ-*`、`DEC-*`、`AC-*` 与 Phase ID 的 roadmap。 | 要求 `intent.md` 且 `status: CONFIRMED`；不得重新解释 Intent 的范围、非目标或不变条件。 |
 | [roadmap-to-spec-plan](./skills/roadmap-to-spec-plan/) | 将一个已确认 roadmap 阶段转为决策包、Spec、可执行 Plan、验收矩阵和审阅台账。 | **必须依赖**确认后的 roadmap / Phase ID。调用 `independent-review` 的 `design` 或 `concurrency` profile，并显式选择 Astra 或 Cursor。已批准产物交给 `spec-plan-to-code`。 |
 | [spec-plan-to-code](./skills/spec-plan-to-code/) | 依据已批准决策包、Spec 和 Plan 实现代码，并保留按变更类型选择的测试、独立审阅、探针、运行时验证与证据。 | **必须依赖** `roadmap-to-spec-plan` 的批准产物和 `coding-guidelines`。调用 `independent-review` 的实现/并发 profile，并显式选择 reviewer backend、模型与思考强度。 |
 
@@ -48,11 +56,13 @@ flowchart LR
 |---|---|
 | [Claude Code](https://claude.ai/code)（支持 plugin） | 将本仓库安装为 Claude Code 插件。 |
 | [Codex](https://openai.com/codex/) | 将选定技能安装或链接到 `~/.codex/skills/`。仓库提供仅显式调用的工作流元数据。 |
-| [Cursor](https://cursor.com/) 与可导入 `cursor_sdk` 的 Python 环境 | `roadmap-to-spec-plan`、`spec-plan-to-code` 的可选外部只读审阅；正常工作流不依赖 Cursor。 |
-| `~/.cursor-review/API_KEY` 中的 Cursor API key | 仅在调用仓库自带 Cursor 审阅脚本时需要。不得将 key 写入仓库或提示词。 |
-| `brainstorming`、`grilling` 技能 | 推荐用于更深入的需求讨论；缺失时 `requirements-to-roadmap` 会安全降级。 |
+| [Cursor](https://cursor.com/) 与可导入 `cursor_sdk` 的 Python 环境 | `$cursor-review`，可由审阅工作流按需调用；正常工作流不依赖 Cursor。 |
+| `~/.cursor-review/API_KEY` 中的 Cursor API key | 仅在调用 `$cursor-review` 时需要。不得将 key 写入仓库或提示词。 |
+| `grilling` 技能 | `requirement-clarification` 的可选引擎；缺失时该技能使用内置回退流程。 |
+| `brainstorming` 指引 | 可用于扩展替代方案；Requirement Council 已内置必要的比较核心，不依赖该技能。 |
+| `pms-issue-reader` 技能与 PMS 访问 | `requirement-to-intent` 在 issue 校验后使用一次；沙箱环境可能弹出只读网络权限申请。 |
 | 已配置的审阅模型 | 工作流引用 Astra 等独立审阅模型；宿主运行时需要提供等价且已授权的审阅能力。 |
-| Requirement Council（仅 Codex） | 需要将三个自定义 Agent TOML 全局安装到 Codex。每次运行由 moderator 选择模型/思考强度档位，并在创建子 Agent 时传入；未获宿主证明时，只读行为属于协议约束。 |
+| Requirement Council（仅 Codex） | 需要将两个自定义 Agent TOML 全局安装到 Codex。每次运行由 moderator 选择模型/思考强度档位，并在创建子 Agent 时传入；未获宿主证明时，只读行为属于协议约束。 |
 
 Requirement Council 默认仅在开始和结束时比较仓库快照；用户明确要求时才启用审计模式。宿主无法证明只读隔离时，结果标为协议约束而非直接失败；发现仓库变化即终止运行。
 
@@ -70,19 +80,18 @@ Requirement Council 默认仅在开始和结束时比较仓库快照；用户明
 仓库通过 `.codex-plugin/plugin.json` 暴露共享的 `skills/` 目录。市场条目发布前，可 clone 本仓库，将所需技能复制或链接到 `~/.codex/skills/`：
 
 ```bash
-ln -s "$(pwd)/skills/requirements-to-roadmap" ~/.codex/skills/requirements-to-roadmap
+ln -s "$(pwd)/skills/intent-to-roadmap" ~/.codex/skills/intent-to-roadmap
 ```
 
-对其他所需技能重复操作。工作流技能保持仅显式调用，例如 `$requirements-to-roadmap`。
+对其他所需技能重复操作。工作流技能保持仅显式调用，例如 `$intent-to-roadmap`。
 
 #### Requirement Council（个人 Codex 安装）
 
 Requirement Council 使用个人 Codex Agent，而不是项目级 Agent。必须完成以下两个安装步骤：
 
 1. 将 `skills/requirement-council` 复制或链接到 `~/.codex/skills/requirement-council`。
-2. 将 `skills/requirement-council/agents/` 中全部三个独立 Agent TOML 复制到 `~/.codex/agents/`：
-   - `requirement-council-user-value-explorer.toml`
-   - `requirement-council-minimal-delivery-reframer.toml`
+2. 将 `skills/requirement-council/agents/` 中两个独立 Agent TOML 复制到 `~/.codex/agents/`：
+   - `requirement-council-value-boundary-explorer.toml`
    - `requirement-council-risk-counterexample-critic.toml`
 
 例如，在仓库根目录执行：
@@ -90,14 +99,13 @@ Requirement Council 使用个人 Codex Agent，而不是项目级 Agent。必须
 ```bash
 mkdir -p ~/.codex/skills ~/.codex/agents
 ln -s "$(pwd)/skills/requirement-council" ~/.codex/skills/requirement-council
-cp skills/requirement-council/agents/requirement-council-user-value-explorer.toml ~/.codex/agents/requirement-council-user-value-explorer.toml
-cp skills/requirement-council/agents/requirement-council-minimal-delivery-reframer.toml ~/.codex/agents/requirement-council-minimal-delivery-reframer.toml
+cp skills/requirement-council/agents/requirement-council-value-boundary-explorer.toml ~/.codex/agents/requirement-council-value-boundary-explorer.toml
 cp skills/requirement-council/agents/requirement-council-risk-counterexample-critic.toml ~/.codex/agents/requirement-council-risk-counterexample-critic.toml
 ```
 
 安装或更新 Agent TOML 后，请启动一个全新的 Codex 会话，让个人 Agent 发现机制重新加载这些文件。
 
-请使用非空需求文本显式调用。文本可以是一行或多行，不需要 issue 编号：
+请使用功能主题显式调用。主 Agent 会使用相关历史对话作为需求上下文，因此调用文本无需重复完整需求：
 
 ```text
 $requirement-council
@@ -106,11 +114,11 @@ $requirement-council
 现有权限必须继续控制用户能够看到哪些记录。
 ```
 
-此 Skill 有意不包含在 Claude Code plugin 中。四个 Agent 不会通过 `.codex-plugin/plugin.json` 全局安装；请按以上两个个人 Codex 步骤安装。Council 运行绝不会自动调用或交接给其他 Skill。
+此 Skill 有意不包含在 Claude Code plugin 中。它的两个子 Agent 不会通过 `.codex-plugin/plugin.json` 全局安装；请按以上两个个人 Codex 步骤安装。Council 只写入候选 `requirement.md`；请用 `$requirement-to-intent` 显式交接到后续工作流。
 
 ### Cursor 审阅配置（可选）
 
-两个工作流技能内置受限、只读的 `cursor_review.py`。配置 Cursor 与 `cursor_sdk` bridge，在 Cursor 中生成 API key，并仅将 key 保存到 `~/.cursor-review/API_KEY`。脚本默认使用 `grok-4.6` 和 `high` 思考强度，且不会给 Cursor 写文件或 shell 权限。
+`$cursor-review` 统一维护受限、只读的 runner。配置 Cursor 与 `cursor_sdk` bridge，在 Cursor 中生成 API key，并仅将 key保存到 `~/.cursor-review/API_KEY`。首次审阅前运行它的 `scripts/cursor_review.py --check` 诊断。脚本默认使用 `grok-4.6` 和 `high` 思考强度，且不会给 Cursor 写文件或 shell 权限。
 
 ## 开源协议
 
