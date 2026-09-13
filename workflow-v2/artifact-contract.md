@@ -32,4 +32,6 @@ resolved_path: <absolute path>
 
 `content_digest` is never inside the hashed body. Compute it from the exact bytes strictly between the body markers: UTF-8, LF line endings, no BOM, and exactly one final LF after the last body line. Preserve body order; do not sort fields or normalize whitespace. The integrity and approval regions are excluded. `approved_digest` must equal `content_digest`, and `approved_revision` must equal the body's `content_revision`.
 
+`confirmer` is `HUMAN` for the Flow-level Requirement authorization and for a Direct invocation gate. Under a verified `FLOW_RUN_CONTEXT`, downstream artifacts may use `ORCHESTRATED` only when the approval envelope records the exact upstream Requirement authorization, controller/run ID, scope binding, revision, and digest. `ORCHESTRATED` is derivation authority, not permission to change product intent or bypass required reviews.
+
 Any body-byte change increments `content_revision`, recomputes `content_digest`, and invalidates the approval region. Moving an artifact preserves the exact body bytes, integrity digest, and approval binding while regenerating only the excluded path metadata for the new location; recompute the body digest at the destination before accepting it.

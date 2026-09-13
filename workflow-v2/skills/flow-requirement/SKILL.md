@@ -1,11 +1,13 @@
 ---
 name: flow-requirement
-description: Use when the user explicitly requests structured feature-requirement exploration before intent confirmation.
+description: Use when the user explicitly requests structured feature-requirement exploration and authorization before intent generation.
 ---
 
 # Flow Requirement
 
+Read and enforce `../../flow-contract.md`; silently verify its issue, controller, and worktree invariants at stage entry.
 Read and follow `../../artifact-contract.md` for every artifact revision, canonical SHA-256 digest, and approval operation.
+When `FLOW_RUN_CONTEXT` is present, also read and follow `../../orchestration-contract.md`; return its signal instead of a manual next-skill instruction.
 
 Turn a feature idea into an evidence-backed `requirement.md` through human brainstorming followed by an autonomous agent swarm. This stage explores choices and uncertainty; it must not create intent.md or make the human's product commitment.
 
@@ -43,4 +45,6 @@ root recommendation; role rankings; objections
 Rejected Alternatives; Unknowns; Questions for Intent
 ```
 
-Emit the delimited body, integrity, and approval regions defined by the artifact contract. Use `READY_FOR_INTENT` when candidates and their consequences are clear enough to interrogate with the human, even if a choice remains uncertain. Use `BLOCKED` only when a missing fact prevents meaningful candidates. Use `DRAFT` when useful analysis exists but candidate consequences remain incomplete; round 8 ends as `DRAFT` when neither other state applies. Report path, status, revision, and digest, then stop and suggest explicit `$flow-intent` invocation.
+Emit the delimited body, integrity, and approval regions defined by the artifact contract. Use `READY_FOR_INTENT` only after every intent-changing product choice is resolved; implementation choices may remain unknown. Use `BLOCKED` only when a missing fact prevents meaningful candidates. Use `DRAFT` when useful analysis exists but candidate consequences remain incomplete; round 8 ends as `DRAFT` when neither other state applies.
+
+Show the final Requirement body, revision, digest, selected scope, non-goals, success boundary, accepted risks, and target milestones. Ask once for explicit human authorization of that exact binding and for downstream Flow to continue autonomously inside it. Record the authorization in the approval envelope and controller. Under `FLOW_RUN_CONTEXT`, return `FLOW_RUN_HUMAN_GATE` for this authorization, then `FLOW_RUN_HANDOFF` to `$flow-run`; otherwise stop and suggest explicit `$flow-intent` invocation. Any unresolved product choice must be asked here rather than deferred as a routine Intent gate.

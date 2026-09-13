@@ -47,7 +47,7 @@ class WorkflowV2Tests(unittest.TestCase):
             "$flow-brainstorm", "$flow-requirement", "$flow-intent",
             "$flow-roadmap", "$flow-spec", "$flow-plan", "$flow-code",
             "$flow-integration", "automatically invoke the next stage",
-            "pause at the owning human gate", "resume from the same checkpoint",
+            "necessary human gate", "resume from the same checkpoint",
             "route backward", "do not bypass", "mark the goal complete",
             "target_milestones", "pending", "completed", "deferred",
             "standalone Spec is non-authoritative source evidence",
@@ -90,6 +90,99 @@ class WorkflowV2Tests(unittest.TestCase):
         self.assertLess(issue_pos, default_pos)
         self.assertLess(default_pos, interaction_pos)
 
+    def test_flow_is_self_contained_for_issue_and_worktree_admission(self):
+        contract = (ROOT / "flow-contract.md").read_text()
+        for value in (
+            "does not depend on `AGENTS.md`",
+            "human-provided issue ID",
+            "must not infer",
+            "controller",
+            "independent Git worktree",
+            "local `master`",
+            "codex resume",
+            "verify silently",
+            "FLOW_ADMISSION_GATE",
+            "FLOW_ADMISSION_BLOCKED",
+            "stricter safety constraints",
+            "must not add duplicate Flow gates",
+        ):
+            self.assertIn(value, contract)
+
+        for name in SKILLS:
+            text = self.skill(name)
+            self.assertIn("flow-contract.md", text, name)
+            self.assertIn("issue", text.lower(), name)
+            self.assertIn("worktree", text.lower(), name)
+
+    def test_flow_run_owns_admission_once_and_stages_revalidate_without_reprompting(self):
+        text = self.skill("flow-run")
+        for value in (
+            "owns Flow admission",
+            "request it exactly once",
+            "Initialize the controller",
+            "create or reuse the matching worktree",
+            "before artifact discovery",
+            "must not ask for the issue ID again",
+            "must not recreate the worktree",
+        ):
+            self.assertIn(value, text)
+
+    def test_flow_run_uses_non_terminal_stage_return_protocol(self):
+        runner = self.skill("flow-run")
+        for value in (
+            "orchestration-contract.md",
+            "FLOW_RUN_CONTEXT",
+            "FLOW_RUN_HANDOFF",
+            "FLOW_RUN_HUMAN_GATE",
+            "FLOW_RUN_BLOCKED",
+            "FLOW_RUN_ROUTE_BACK",
+            "FLOW_RUN_COMPLETE",
+            "non-terminal",
+            "same active turn",
+            "must not surface",
+        ):
+            self.assertIn(value, runner)
+
+        contract = (ROOT / "orchestration-contract.md").read_text()
+        for value in (
+            "caller: flow-run",
+            "Direct invocation",
+            "Orchestrated invocation",
+            "FLOW_RUN_HANDOFF",
+            "FLOW_RUN_HUMAN_GATE",
+            "FLOW_RUN_BLOCKED",
+            "FLOW_RUN_ROUTE_BACK",
+            "must not suggest",
+            "same active turn",
+        ):
+            self.assertIn(value, contract)
+
+        for name in (
+            "flow-requirement", "flow-intent", "flow-roadmap", "flow-spec",
+            "flow-plan", "flow-code", "flow-integration",
+        ):
+            stage = self.skill(name)
+            self.assertIn("orchestration-contract.md", stage, name)
+            self.assertIn("FLOW_RUN_CONTEXT", stage, name)
+
+        integration = self.skill("flow-integration")
+        self.assertIn("aggregate result is `FAILED`", integration)
+        self.assertIn("FLOW_RUN_ROUTE_BACK", integration)
+        self.assertIn("owner_stage", integration)
+
+    def test_flow_run_repairs_obsolete_manual_stage_gates(self):
+        text = self.skill("flow-run")
+        for value in (
+            "explicit_stage_invocation",
+            "obsolete orchestration state",
+            "must not ask the human to copy",
+            "migrate the controller",
+            "FLOW_RUN_HANDOFF",
+            "milestone selection is already recorded",
+            "immediately continue",
+        ):
+            self.assertIn(value, text)
+
     def test_requirement_discussion_contract(self):
         text = self.skill("flow-requirement")
         for value in (
@@ -126,9 +219,10 @@ class WorkflowV2Tests(unittest.TestCase):
     def test_intent_confirmation_contract(self):
         text = self.skill("flow-intent")
         for value in (
-            "requirement.md", "grilling", "built-in fallback", "Decision Card",
-            "one high-leverage question", "explicit human confirmation",
-            "intent-changing", "BLOCKED", "intent.md", "status: CONFIRMED",
+            "requirement.md", "grilling", "Decision Card",
+            "one high-leverage question", "without another human confirmation",
+            "intent-changing", "FLOW_RUN_ROUTE_BACK", "intent.md", "status: CONFIRMED",
+            "ORCHESTRATED", "Requirement authorization",
             "must not create roadmap", "$flow-roadmap",
         ):
             self.assertIn(value, text)
@@ -183,8 +277,8 @@ class WorkflowV2Tests(unittest.TestCase):
                 "not a review finding",
                 status,
                 "CURSOR_REVIEW_GAP",
-                "remind the human",
-                "next handoff",
+                "final completion report",
+                "handoff",
                 "full `review_binding` and binding ID",
             ):
                 self.assertIn(value, text, f"{name} missing {value}")
@@ -196,7 +290,7 @@ class WorkflowV2Tests(unittest.TestCase):
         integration = self.skill("flow-integration")
         self.assertIn("COMPLETE_WITH_DEFECT", integration)
         self.assertIn("CURSOR_REVIEW_GAP", integration)
-        self.assertIn("remind the human", integration)
+        self.assertIn("final report", integration)
         self.assertIn("regardless of the claimed Code status", integration)
         self.assertIn("reject the inconsistent tuple `COMPLETE` plus an open gap", integration)
 
@@ -282,11 +376,11 @@ class WorkflowV2Tests(unittest.TestCase):
     def test_required_dependencies_and_worktree_gate_fail_closed(self):
         requirement = self.skill("flow-requirement")
         code = self.skill("flow-code")
-        intent = self.skill("flow-intent")
+        contract = (ROOT / "flow-contract.md").read_text()
         self.assertIn("BLOCKED_DEPENDENCY", requirement)
         self.assertIn("BLOCKED_DEPENDENCY", code)
-        self.assertIn("feature-worktree gate", intent)
-        self.assertIn("original checkout", intent)
+        self.assertIn("FLOW_ADMISSION_BLOCKED", contract)
+        self.assertIn("do not continue in the original checkout", contract)
 
     def test_digest_contract_is_non_self_referential_and_detects_tampering(self):
         contract = (ROOT / "artifact-contract.md").read_text()
@@ -342,14 +436,15 @@ class WorkflowV2Tests(unittest.TestCase):
         self.assertIn("realpath semantics", integration)
         self.assertIn("reject `..` or symlink traversal", integration)
 
-    def test_intent_rehomes_requirement_and_confirms_its_own_digest(self):
+    def test_intent_uses_pre_admitted_worktree_and_orchestrated_approval(self):
         text = self.skill("flow-intent")
         for value in (
-            "preserve the exact confirmed BODY bytes",
-            "recompute and compare its body digest and revision",
-            "new absolute path",
-            "show the exact body, revision, and digest to the human",
-            "explicit confirmation of this intent artifact itself",
+            "worktree was admitted before artifact discovery",
+            "Never create or migrate a worktree in this stage",
+            "ORCHESTRATED",
+            "without another human confirmation",
+            "approved_revision",
+            "approved_digest",
         ):
             self.assertIn(value, text)
 

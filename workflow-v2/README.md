@@ -1,6 +1,6 @@
 # AI-Native Flow V2
 
-An explicit-only workflow with one continuous orchestrator and eight bounded stages. Each stage owns one artifact or evidence boundary and returns control at its boundary; `$flow-run` validates the handoff and continues after satisfied human gates.
+An explicit-only, self-contained workflow with one continuous orchestrator and eight bounded stages. Flow itself owns issue admission, worktree isolation, artifact bindings, and orchestration; it remains complete without `AGENTS.md`.
 
 ```text
 $flow-run          -> detect/resume the deepest valid checkpoint and orchestrate the flow
@@ -18,13 +18,13 @@ $flow-integration  -> integration evidence
 
 | Skill | Responsibility | Human gate |
 | --- | --- | --- |
-| `flow-run` | Starting-stage detection, verified handoffs, pause/resume, and failure routing | Preserves the gate owned by each selected stage. |
+| `flow-run` | Issue/worktree admission, starting-stage detection, verified handoffs, pause/resume, and failure routing | Requests missing admission or genuinely necessary authority only. |
 | `flow-brainstorm` | Human exploration and option comparison | Human confirms the discussion summary, not final intent. |
-| `flow-requirement` | Two-role autonomous agent swarm | Human brainstorming is frozen as input; uncertainty may remain. |
-| `flow-intent` | Grilling-based reverse questioning | Human explicitly confirms the complete intent. |
-| `flow-roadmap` | Milestones, dependencies, and acceptance direction | Human approves the roadmap and selects one milestone. |
-| `flow-spec` | Observable behavioral rules for that milestone | Human approves the complete Spec revision. |
-| `flow-plan` | File-level executable tasks and verification contract | Human approves the complete Plan revision. |
+| `flow-requirement` | Two-role autonomous agent swarm and final product boundary | Human authorizes the final Requirement once. |
+| `flow-intent` | Normalize the authorized Requirement into authoritative intent | Autonomous under `flow-run`; unresolved product choices route back. |
+| `flow-roadmap` | Milestones, dependencies, and acceptance direction | Autonomous under `flow-run`; milestones are selected deterministically. |
+| `flow-spec` | Observable behavioral rules for that milestone | GPT → Cursor review, then orchestrated approval. |
+| `flow-plan` | File-level executable tasks and verification contract | GPT → Cursor review, then orchestrated approval. |
 | `flow-code` | TDD implementation and unit/regression evidence | No integration claim; blocking findings stop completion. |
 | `flow-integration` | Cross-component and end-to-end validation | Missing environment or authority is reported as blocked. |
 
@@ -32,7 +32,7 @@ $flow-integration  -> integration evidence
 
 `intent.md` is authoritative for product scope. `requirement.md` remains the evidence and alternatives record. Roadmap reads both. Later stages consume exact approved revision tuples and return upstream instead of silently changing an earlier decision.
 
-Every stage must read and follow [`artifact-contract.md`](artifact-contract.md). It defines non-self-referential SHA-256 body boundaries and byte canonicalization; approval envelopes bind the approved revision and digest without mutating the body. Follow the enclosing repository's feature-worktree rules before `flow-intent` writes confirmed feature artifacts. When the gate moves work into a new worktree, `flow-intent` re-homes and verifies the approved requirement before creating intent. A missing required dependency produces the stage's documented blocked status rather than silent substitution.
+Every stage must read and follow [`flow-contract.md`](flow-contract.md) and [`artifact-contract.md`](artifact-contract.md). Flow admission obtains a human-provided issue and creates or reuses the isolated worktree before artifact discovery; every stage silently revalidates that binding. `AGENTS.md` may add stricter project safety and output rules but is not required for Flow correctness and must not duplicate Flow gates. A missing required dependency produces the stage's documented blocked status rather than silent substitution.
 
 ## Codex setup
 

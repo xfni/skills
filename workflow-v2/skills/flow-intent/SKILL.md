@@ -1,21 +1,23 @@
 ---
 name: flow-intent
-description: Use when the user explicitly requests human confirmation of a prepared requirement before roadmap work.
+description: Use when the user explicitly requests authoritative intent from an authorized prepared requirement.
 ---
 
 # Flow Intent
 
+Read and enforce `../../flow-contract.md`; silently verify its issue, controller, worktree, and Requirement authorization bindings at stage entry.
 Read and follow `../../artifact-contract.md` for every artifact revision, digest, and approval operation.
+When `FLOW_RUN_CONTEXT` is present, also read and follow `../../orchestration-contract.md`; return its signal instead of a manual next-skill instruction.
 
-Read `requirement.md`, interrogate intent-changing choices with the human, and write the authoritative `intent.md`. This stage converts exploration into commitment; it must not create roadmap content.
+Read the human-authorized `requirement.md` and write the authoritative `intent.md`. This stage normalizes an existing commitment; it must not create roadmap content or reopen settled choices.
 
 ## Admission
 
 Require `requirement.md` with an issue, sources, content revision and digest, `status: READY_FOR_INTENT`, candidate directions, evidence, objections, and unknowns. Recompute and verify its canonical digest before use. A `DRAFT` or `BLOCKED` input returns to `$flow-requirement`. Preserve its immutable issue and conversation snapshots; never re-fetch PMS or rerun the agent swarm.
 
-## Grilling
+## Residual ambiguity
 
-If the `grilling` skill is installed, use it as the questioning engine with the complete requirement and relevant history. Keep this skill's artifact, decision, and confirmation rules authoritative. If grilling is unavailable, use this built-in fallback:
+Do not routinely grill or reconfirm the human. First resolve technical and evidence questions from the requirement and authorized repository. If an intent-changing product choice was incorrectly left unresolved, return `FLOW_RUN_ROUTE_BACK` to `flow-requirement`; that stage owns the necessary human question. Under direct invocation, the same condition is a human gate and may use `grilling` or the built-in Decision Card format below.
 
 1. Identify intent-changing decision nodes affecting the problem, user, outcome, selected direction, scope, non-goals, invariants, accepted product risk, or success signals.
 2. Resolve evidence questions from the requirement and authorized repository before asking the human.
@@ -36,13 +38,11 @@ Each `Intent Decisions` record contains stable `DEC-*`, question, options or fre
 
 The installed grilling path must produce equivalent records and must not turn model pressure into a decision. Do not repeat a question with no new evidence. Implementation-only uncertainty belongs in `Remaining Unknowns`. If an intent-changing fact or authority choice cannot be resolved, update `requirement.md` to `status: BLOCKED`, increment revision, record the named blocker and required owner/evidence, do not write `intent.md`, and stop with the appropriate resume condition; return to `$flow-requirement` only when new requirement exploration is actually needed.
 
-## Confirmation gate
+## Authorization binding
 
-When no intent-changing node remains, show one normalized preview containing problem, target user and scenario, desired outcome, value, selected direction and rationale, Scope, Non-goals, Invariants, Success Signals, accepted product risks, Rejected Alternatives, and Remaining Unknowns.
+When no intent-changing node remains, derive one normalized representation containing problem, target user and scenario, desired outcome, value, selected direction and rationale, Scope, Non-goals, Invariants, Success Signals, accepted product risks, Rejected Alternatives, and Remaining Unknowns. Do not surface it as an approval prompt under `FLOW_RUN_CONTEXT`.
 
-Require explicit human confirmation of that exact current content revision and digest. Agreement with individual answers, participation, an earlier revision, or silence is insufficient. A requested content change increments the requirement revision, recomputes its digest, updates `DEC-*`, and requires a new preview. On confirmation, place `status: CONFIRMED`, `confirmed_by`, `confirmed_at`, `approved_revision`, and `approved_digest` in an approval envelope without changing the approved body revision.
-
-Before writing `intent.md`, satisfy the enclosing repository's feature-worktree gate. When it requires creating a dedicated worktree and resuming the session, stop after reporting the exact resume command. After resume, resolve the requirement destination again through the artifact contract using the new project root and its original flow_step/date/subject, preserve the exact confirmed BODY bytes, digest, and approval binding while regenerating only excluded path metadata, recompute and compare its body digest and revision, record the new absolute path, and use only that copy downstream. A mismatch, missing source, unverified current worktree, or inability to preserve the body ends `BLOCKED`; never write intent in the original checkout after the gate applies.
+Require the exact Requirement revision/digest to carry the Flow-level human authorization. The worktree was admitted before artifact discovery; verify it again and return the Flow admission signal on mismatch. Never create or migrate a worktree in this stage.
 
 ## Write intent.md
 
@@ -50,7 +50,7 @@ Resolve the output path through the artifact contract with flow_step `intent`, t
 
 ```text
 status: CONFIRMED
-content_revision in the body; content_digest in the integrity region; approval metadata outside both
+content_revision in the body; content_digest in the integrity region; approved_revision and approved_digest in approval metadata
 issue; requirement path, approved revision, and approved digest; confirmed_by; confirmed_at
 Problem; Target User and Scenario; Desired Outcome; Value
 Selected Direction and rationale
@@ -59,4 +59,4 @@ Accepted Product Risks; Rejected Alternatives
 Remaining Unknowns that cannot change intent
 ```
 
-Render the complete intent body, compute its canonical SHA-256 digest, and show the exact body, revision, and digest to the human. Require explicit confirmation of this intent artifact itself; confirmation of earlier Decision Cards or the requirement preview is insufficient. Only then sign its approval envelope, binding the intent revision and digest plus the re-homed requirement path, approved revision, and approved digest. Report both paths, approved revisions, and approved digests, then stop. Do not include phases, architecture, or tasks; must not create roadmap or automatically invoke it. Suggest explicit `$flow-roadmap` as the next step.
+Render the complete intent body and compute its canonical SHA-256 digest. Under `FLOW_RUN_CONTEXT`, sign it as `ORCHESTRATED` against the Requirement authorization without another human confirmation, report both paths/revisions/digests, and return `FLOW_RUN_HANDOFF` with `next_stage: flow-roadmap`. Under direct invocation, show the binding and require explicit confirmation before signing, then suggest `$flow-roadmap`. Do not include phases, architecture, or tasks; must not create roadmap itself.

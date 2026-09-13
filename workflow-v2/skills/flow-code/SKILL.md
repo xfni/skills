@@ -5,7 +5,9 @@ description: Use when the user explicitly requests implementation and unit testi
 
 # Flow Code
 
+Read and enforce `../../flow-contract.md`; silently verify its issue, controller, worktree, and authorization bindings at stage entry.
 Read and follow `../../artifact-contract.md` when verifying artifact revisions, digests, and approvals.
+When `FLOW_RUN_CONTEXT` is present, also read and follow `../../orchestration-contract.md`; return its signal instead of a manual next-skill instruction.
 
 Implement one approved plan.md with TDD and produce reviewable code plus unit-test evidence. This stage proves local behavior; it must not claim integration coverage.
 
@@ -17,7 +19,7 @@ Implement one approved plan.md with TDD and produce reviewable code plus unit-te
 
 ## Admission
 
-Require the complete `$flow-plan` handoff tuple: requirement, intent, roadmap, spec, and approved plan paths with approved revisions and SHA-256 digests, milestone ID, reserved `TESTCASE-*`, and any open review gaps. Accept Plan `APPROVED` or `APPROVED_WITH_DEFECT`; display inherited `CURSOR_REVIEW_GAP` records, remind the human, and propagate them. Recompute every canonical digest and verify the exact snapshots, repository worktree, allowed change surface, commands, and prerequisites. Stop on drift or missing approval. If `test-driven-development` or `coding-guidelines` is unavailable, end `BLOCKED_DEPENDENCY`; do not improvise their required discipline.
+Require the complete `$flow-plan` handoff tuple: requirement, intent, roadmap, spec, and approved plan paths with approved revisions and SHA-256 digests, milestone ID, reserved `TESTCASE-*`, and any open review gaps. Accept Plan `APPROVED` or `APPROVED_WITH_DEFECT`; propagate inherited `CURSOR_REVIEW_GAP` records without pausing orchestration. Recompute every canonical digest and verify the exact snapshots, repository worktree, allowed change surface, commands, and prerequisites. Stop on drift or missing approval. If `test-driven-development` or `coding-guidelines` is unavailable, end `BLOCKED_DEPENDENCY`; do not improvise their required discipline.
 
 ## Execute each task
 
@@ -39,7 +41,7 @@ Then invoke `$cursor-review` as the mandatory final review of that same snapshot
 
 Treat SDK/credential availability, connection, bridge, timeout, or malformed/missing terminal report as Cursor `RUN_ERROR`; retry exactly once against the same frozen snapshot, binding, and transmission manifest, recording both attempt IDs, timestamps, and sanitized errors. A normal report containing findings is not a review finding failure eligible for degradation; resolve it and rerun the gate. Denied transmission, drift, invalid local input, or failed validation remains blocking.
 
-If the second attempt is also `RUN_ERROR`, add a durable open `CURSOR_REVIEW_GAP` with the full `review_binding` and binding ID, both attempts referencing that ID, snapshot/digests and upstream tuple, backend/model/effort, missing assurance, owner, and remediation. Combine inherited gaps. If any gap remains `OPEN`, permit only `COMPLETE_WITH_DEFECT`, even when this stage's own Cursor review succeeds; remind the human before completion, include every open gap in the next handoff, and remind the human downstream until a successful bound Cursor review of each affected artifact closes it. Never claim fully reviewed completion.
+If the second attempt is also `RUN_ERROR`, add a durable open `CURSOR_REVIEW_GAP` with the full `review_binding` and binding ID, both attempts referencing that ID, snapshot/digests and upstream tuple, backend/model/effort, missing assurance, owner, and remediation. Combine inherited gaps. If any gap remains `OPEN`, permit only `COMPLETE_WITH_DEFECT`, even when this stage's own Cursor review succeeds; include every open gap in the next handoff and final completion report until a successful bound Cursor review closes it. Never claim fully reviewed completion or pause solely to announce the gap.
 
 Require each report to return a `review_binding` with stage `flow-code`, code_snapshot ID and content digests, approved upstream tuple, backend, exact model/effort, and terminal status. Recompute the snapshot and upstream digests immediately before dispatch and after receipt. A missing/mismatched binding or intervening drift invalidates the report and ends `BLOCKED_REVIEW`; never use a stale or unbound report.
 
@@ -47,4 +49,4 @@ Resolve the output path through the artifact contract with flow_step `code`, the
 
 End `COMPLETE` only when every plan task is complete, all required unit/regression commands pass freshly, no blocking finding remains, the diff stays within scope, Cursor completed, and no inherited or current gap is open. Use `COMPLETE_WITH_DEFECT` when all non-Cursor conditions are satisfied but any inherited or current `CURSOR_REVIEW_GAP` remains open. Otherwise end `INCOMPLETE` with exact blockers. Do not equate mocks, local probes, or unit suites with cross-component validation.
 
-Report a handoff tuple containing milestone ID; requirement, intent, roadmap, spec, and plan paths with their approved revisions and digests; code-evidence path; reserved `TESTCASE-*`; all open `CURSOR_REVIEW_GAP` records; and a `code_snapshot` of HEAD commit OID, `git status --short`, tracked diff, and content digests for every untracked non-ignored file. Record Plan-declared ignored/generated inputs separately; they cannot contain production code or required fixtures. Integration must compare the same snapshot before testing. Stop without pushing or deploying, then suggest explicit `$flow-integration`.
+Report a handoff tuple containing milestone ID; requirement, intent, roadmap, spec, and plan paths with their approved revisions and digests; code-evidence path; reserved `TESTCASE-*`; all open `CURSOR_REVIEW_GAP` records; and a `code_snapshot` of HEAD commit OID, `git status --short`, tracked diff, and content digests for every untracked non-ignored file. Record Plan-declared ignored/generated inputs separately; they cannot contain production code or required fixtures. Integration must compare the same snapshot before testing. Under `FLOW_RUN_CONTEXT`, return `FLOW_RUN_HANDOFF` with `next_stage: flow-integration`; otherwise stop without pushing or deploying, then suggest explicit `$flow-integration`.

@@ -5,7 +5,9 @@ description: Use when the user explicitly requests an executable implementation 
 
 # Flow Plan
 
+Read and enforce `../../flow-contract.md`; silently verify its issue, controller, worktree, and authorization bindings at stage entry.
 Read and follow `../../artifact-contract.md` for every artifact revision, digest, and approval operation.
+When `FLOW_RUN_CONTEXT` is present, also read and follow `../../orchestration-contract.md`; return its signal instead of a manual next-skill instruction.
 
 Turn one approved spec.md into ordered, executable tasks. Plan how to implement and verify the approved behavior without changing product intent or specification rules.
 
@@ -15,7 +17,7 @@ Turn one approved spec.md into ordered, executable tasks. Plan how to implement 
 
 ## Admission
 
-Require the `$flow-spec` handoff tuple: requirement, intent, roadmap, and spec paths with approved revisions and SHA-256 digests plus the milestone ID. Accept `APPROVED` or `APPROVED_WITH_DEFECT`; for the latter require its open `CURSOR_REVIEW_GAP`, display it, remind the human, and propagate it. Recompute and verify every canonical digest; reject drift, missing approval, or multiple milestones.
+Require the `$flow-spec` handoff tuple: requirement, intent, roadmap, and spec paths with approved revisions and SHA-256 digests plus the milestone ID. Accept `APPROVED` or `APPROVED_WITH_DEFECT`; for the latter require and propagate its open `CURSOR_REVIEW_GAP` without pausing orchestration. Recompute and verify every canonical digest; reject drift, missing approval, or multiple milestones.
 
 Inspect the relevant repository implementation, tests, build commands, dependencies, and conventions. Resolve code facts before planning. If a task requires changing observable behavior, return to `$flow-spec`; if it changes milestone or intent boundaries, return to the owning earlier stage.
 
@@ -49,10 +51,10 @@ Then invoke `$cursor-review` as the mandatory final review of the same Plan revi
 
 Treat SDK/credential availability, connection, bridge, timeout, or malformed/missing terminal report as Cursor `RUN_ERROR`; retry exactly once with the same frozen binding and transmission manifest, recording both attempt IDs, timestamps, and sanitized errors. A normal report containing findings is not a review finding failure eligible for degradation and must be resolved. Denied transmission, drift, or invalid local input remains `BLOCKED_REVIEW`.
 
-After a second `RUN_ERROR`, create a durable open `CURSOR_REVIEW_GAP` with the full `review_binding` and binding ID, both attempts referencing that ID, bound revision/digest and upstream tuple, backend/model/effort, missing assurance, owner, and remediation. Combine it with inherited gaps. If any inherited or new `CURSOR_REVIEW_GAP` remains `OPEN`, the Plan may continue only as `APPROVED_WITH_DEFECT`, even when its own Cursor review succeeds; remind the human before approval, include all gaps in the next handoff, and remind the human downstream until a successful bound Cursor review of each affected artifact closes it. Never call the Plan fully reviewed.
+After a second `RUN_ERROR`, create a durable open `CURSOR_REVIEW_GAP` with the full `review_binding` and binding ID, both attempts referencing that ID, bound revision/digest and upstream tuple, backend/model/effort, missing assurance, owner, and remediation. Combine it with inherited gaps. If any inherited or new `CURSOR_REVIEW_GAP` remains `OPEN`, the Plan may continue only as `APPROVED_WITH_DEFECT`, even when its own Cursor review succeeds; include all gaps in the next handoff and final completion report until a successful bound Cursor review closes each affected artifact. Never call the Plan fully reviewed or pause solely to announce the gap.
 
 Require each report to return a `review_binding` with stage `flow-plan`, Plan revision/digest, upstream tuple, backend, exact model/effort, and terminal status. Recompute the Plan and upstream digests immediately before dispatch and after receipt. A missing/mismatched binding or any intervening drift invalidates the report and ends `BLOCKED_REVIEW`; never use a stale or unbound report.
 
-Keep the plan body under `content_revision` with a canonical SHA-256 `content_digest` and approval metadata in a separate envelope. After review passes or the two-attempt degradation is recorded, show the body, revision, digest, and open gaps and request explicit approval. Content changes increment revision, recompute the digest, invalidate both reviews, and require the full GPT → Cursor gate before re-preview. Approval records `status: APPROVED` only when no gap is open; otherwise it records `APPROVED_WITH_DEFECT`, plus `approved_revision`, `approved_digest`, confirmer, and time without changing the approved body.
+Keep the plan body under `content_revision` with a canonical SHA-256 `content_digest` and approval metadata in a separate envelope. After review passes or the two-attempt degradation is recorded, verify the Plan remains inside the Requirement authorization. Under `FLOW_RUN_CONTEXT`, sign it as `ORCHESTRATED` without human approval; use `APPROVED` only when no gap is open and otherwise `APPROVED_WITH_DEFECT`, recording `approved_revision` and `approved_digest`. Under direct invocation, show the body, binding, and gaps and request explicit approval. Content changes invalidate both reviews.
 
-Stop after approval. Report a handoff tuple containing requirement, intent, roadmap, spec, and plan paths with all approved revisions and digests, milestone ID, the `TESTCASE-*` set, and all open `CURSOR_REVIEW_GAP` records, then suggest explicit `$flow-code`. Do not implement code or run plan tasks automatically.
+Report a handoff tuple containing requirement, intent, roadmap, spec, and plan paths with all approved revisions and digests, milestone ID, the `TESTCASE-*` set, and all open `CURSOR_REVIEW_GAP` records. Under `FLOW_RUN_CONTEXT`, return `FLOW_RUN_HANDOFF` with `next_stage: flow-code`; otherwise stop and suggest explicit `$flow-code`. Do not implement code or run plan tasks inside this stage.

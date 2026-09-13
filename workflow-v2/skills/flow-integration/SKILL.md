@@ -5,7 +5,9 @@ description: Use when the user explicitly requests real-service cross-boundary v
 
 # Flow Integration
 
+Read and enforce `../../flow-contract.md`; silently verify its issue, controller, and worktree bindings at stage entry. Governed mode also verifies the Requirement authorization; Direct mode obtains its own explicit test authorization.
 Read and follow `../../artifact-contract.md` when verifying artifact revisions, digests, and approvals.
+When `FLOW_RUN_CONTEXT` is present, also read and follow `../../orchestration-contract.md`; return its signal instead of a manual next-skill instruction.
 
 Execute a confirmed integration contract against a frozen code snapshot and produce integration evidence. Validate the system by starting real services and sending real requests across real boundaries; do not repair production code inside this stage.
 
@@ -15,7 +17,7 @@ Choose exactly one mode and record it.
 
 ### Governed mode
 
-Require the `$flow-code` handoff tuple: milestone ID; exact requirement.md, intent.md, roadmap.md, spec.md, and plan.md paths with approved revisions and SHA-256 digests; code-evidence path; reserved `TESTCASE-*`; code_snapshot; and open review gaps. Accept code evidence `COMPLETE` only when no gap is open; accept `COMPLETE_WITH_DEFECT` only with at least one open `CURSOR_REVIEW_GAP`. For any open gap regardless of the claimed Code status, display every inherited gap, remind the human at admission and in the final report, preserve remediation, and reject the inconsistent tuple `COMPLETE` plus an open gap. Recompute every canonical artifact digest, verify every approval and trace, and compare HEAD, status, tracked diff, and untracked content digests to the handed-off snapshot. Drift requires a new `$flow-code` handoff.
+Require the `$flow-code` handoff tuple: milestone ID; exact requirement.md, intent.md, roadmap.md, spec.md, and plan.md paths with approved revisions and SHA-256 digests; code-evidence path; reserved `TESTCASE-*`; code_snapshot; and open review gaps. Accept code evidence `COMPLETE` only when no gap is open; accept `COMPLETE_WITH_DEFECT` only with at least one open `CURSOR_REVIEW_GAP`. For any open gap regardless of the claimed Code status, propagate it without pausing, preserve remediation, include it in the final report, and reject the inconsistent tuple `COMPLETE` plus an open gap. Recompute every canonical artifact digest, verify every approval and trace, and compare HEAD, status, tracked diff, and untracked content digests to the handed-off snapshot. Drift requires a new `$flow-code` handoff.
 
 Use the Plan-approved `TESTCASE-*` contract and its allowed test-code, fixture, environment, and output boundaries. The approved `TESTCASE-*` integration outline is the prior human authorization for those exact scenarios. Briefly display the test-point IDs being started. Do not ask for another confirmation before execution. This exemption applies only when the complete governed handoff verifies that each scenario already names its objective, participating services, environment, setup, real action/request, expected cross-boundary result, evidence, and safe cleanup. A roadmap alone, a generic test summary, missing detail, drift, or any newly added or expanded scenario does not qualify; use Direct mode and confirmation for the unapproved scope.
 
@@ -84,4 +86,4 @@ Record `PASSED`, `FAILED`, or `BLOCKED` for every governed `TESTCASE-*` and ever
 
 In Governed mode, route every failure to its owning stage: implementation defect → `$flow-code`; missing or incorrect task/seam → `$flow-plan`; behavioral contract gap → `$flow-spec`; milestone boundary/order problem → `$flow-roadmap`; product intent conflict → `$flow-intent`. In Direct mode, report the evidenced failure category and required next action without pretending an absent upstream artifact exists; suggest the appropriate Flow stage only if the human chooses to enter that workflow. Do not claim completion while any required scenario is failed or blocked.
 
-Report the integration evidence path, status, tested code snapshot, coverage gaps, and required next action. Do not deploy, push, or mark a release complete automatically.
+Report the integration evidence path, status, tested code snapshot, coverage gaps, and required next action. Under `FLOW_RUN_CONTEXT`, return `FLOW_RUN_HANDOFF` only when the aggregate result is `PASSED`, `FLOW_RUN_ROUTE_BACK` when the aggregate result is `FAILED` with evidence plus the classified `owner_stage` and `next_stage`, `FLOW_RUN_HUMAN_GATE` for Direct test-point confirmation, or `FLOW_RUN_BLOCKED` for a true blocked result; `$flow-run` decides the next milestone or `FLOW_RUN_COMPLETE`. Do not deploy, push, or mark a release complete automatically.

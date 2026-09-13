@@ -5,7 +5,9 @@ description: Use when the user explicitly requests a behavioral specification fo
 
 # Flow Spec
 
+Read and enforce `../../flow-contract.md`; silently verify its issue, controller, worktree, and authorization bindings at stage entry.
 Read and follow `../../artifact-contract.md` for every artifact revision, digest, and approval operation.
+When `FLOW_RUN_CONTEXT` is present, also read and follow `../../orchestration-contract.md`; return its signal instead of a manual next-skill instruction.
 
 Write the behavioral contract for one selected milestone. Define what the system must do and how it is accepted; must not include implementation tasks or silently make product decisions.
 
@@ -48,10 +50,10 @@ Only then invoke `$cursor-review` as the mandatory final review of the same Spec
 
 Classify a Cursor `INCOMPLETE` caused by SDK/credential availability, connection, bridge, timeout, or malformed/missing terminal report as `RUN_ERROR`, not a review finding. With the same frozen binding and transmission manifest, retry exactly once and record both attempt IDs, timestamps, and sanitized errors. A returned review with findings is not a review finding failure eligible for retry or degradation: resolve it through the normal gate. Denied transmission, source drift, or an invalid local input is also not degradable and remains `BLOCKED_REVIEW`.
 
-If the second Cursor attempt ends in `RUN_ERROR`, allow human approval but mark the artifact `APPROVED_WITH_DEFECT`, add a durable `CURSOR_REVIEW_GAP` containing a full `review_binding` and binding ID, both attempts referencing that same ID, affected revision/digest and upstream tuple, backend/model/effort, unperformed assurance, owner, remediation, and `OPEN` state, and remind the human before approval. Carry that record in the next handoff and remind the human at every downstream admission until a successful bound Cursor review of that exact binding closes it. Never describe this state as fully reviewed.
+If the second Cursor attempt ends in `RUN_ERROR`, mark the artifact `APPROVED_WITH_DEFECT` under orchestrated approval, add a durable `CURSOR_REVIEW_GAP` containing a full `review_binding` and binding ID, both attempts referencing that same ID, affected revision/digest and upstream tuple, backend/model/effort, unperformed assurance, owner, remediation, and `OPEN` state. Carry it through every downstream handoff and the final completion report until a successful bound Cursor review closes it. Never describe this state as fully reviewed or pause solely to announce the gap. Direct invocation still obtains its normal approval.
 
 Require each report to return a `review_binding` with stage `flow-spec`, Spec revision/digest, upstream tuple, backend, exact model/effort, and terminal status. Recompute the Spec and upstream digests immediately before dispatch and after receipt. A missing/mismatched binding or any intervening drift makes the report invalid and ends `BLOCKED_REVIEW`; never attach a stale or unbound report to the gate.
 
-After the review gate passes or the two-attempt degradation record is complete, show the content revision, digest, and any open review gap to the human and request approval. Content changes increment that revision, recompute the digest, invalidate both reviews, and require the full GPT → Cursor gate again before a new preview. Keep status and signatures in a separate approval envelope; confirmation records `status: APPROVED` or `APPROVED_WITH_DEFECT`, confirmer, time, `approved_revision`, and `approved_digest` equal to the reviewed body.
+After the review gate passes or the two-attempt degradation record is complete, verify the Spec remains inside the Requirement authorization. Under `FLOW_RUN_CONTEXT`, sign the reviewed binding as `ORCHESTRATED`, using `APPROVED` or `APPROVED_WITH_DEFECT`, and record `approved_revision` and `approved_digest`; continue without human approval and propagate every open review gap. Under direct invocation, show the binding and request explicit approval. Content changes increment the revision, invalidate both reviews, and require the full GPT → Cursor gate again.
 
-Stop after approval. Report a handoff tuple with requirement, intent, roadmap, and spec paths plus all approved revisions and digests, milestone ID, and any open `CURSOR_REVIEW_GAP`; suggest explicit `$flow-plan`. Do not create a plan or implementation automatically.
+Report a handoff tuple with requirement, intent, roadmap, and spec paths plus all approved revisions and digests, milestone ID, and any open `CURSOR_REVIEW_GAP`. Under `FLOW_RUN_CONTEXT`, return `FLOW_RUN_HANDOFF` with `next_stage: flow-plan`; otherwise stop and suggest explicit `$flow-plan`. Do not create a plan or implementation inside this stage.
