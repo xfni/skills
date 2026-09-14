@@ -347,6 +347,50 @@ class WorkflowV2Tests(unittest.TestCase):
             self.assertIn("TESTCASE-*", stage)
             self.assertNotIn("INT-*", stage)
 
+    def test_integration_starts_a_temporary_local_service_before_remote_fallback(self):
+        integration = self.skill("flow-integration")
+        for value in (
+            "temporary local service",
+            "current worktree",
+            "default execution target",
+            "ephemeral port",
+            "local readiness",
+            "local execution is technically impossible",
+            "explicitly requires deployment-environment behavior",
+            "does not prove the frozen code is untestable",
+            "must not immediately become `BLOCKED`",
+            "stop the local service",
+            "process or container identity",
+            "actual request URL",
+        ):
+            self.assertIn(value, integration)
+
+        plan = self.skill("flow-plan")
+        self.assertIn("temporary local service", plan)
+        self.assertIn("remote test deployment is an explicit exception", plan)
+
+    def test_local_service_may_use_authorized_isolated_test_dependencies(self):
+        integration = self.skill("flow-integration")
+        for value in (
+            "system under test",
+            "supporting dependencies",
+            "authorized isolated non-production test dependencies",
+            "test database",
+            "Redis namespace",
+            "Elasticsearch index prefix",
+            "does not require local containers",
+            "Docker or OrbStack",
+            "must not by itself become `BLOCKED`",
+            "isolation and cleanup",
+            "local dependency process or container",
+        ):
+            self.assertIn(value, integration)
+
+        plan = self.skill("flow-plan")
+        self.assertIn("system under test", plan)
+        self.assertIn("authorized isolated test-environment dependencies", plan)
+        self.assertIn("must not require local containers by default", plan)
+
     def test_artifact_chain_is_revision_and_digest_bound(self):
         for name in SKILLS:
             if name == "flow-brainstorm":
