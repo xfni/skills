@@ -15,6 +15,8 @@ Use the supplied issue and conversation context. Inspect authorized repository f
 
 Ask one question at a time. Prefer a concise choice when genuine alternatives exist, while allowing the human to modify or reject every option. For a decision, present two or three viable directions with value, cost, risk, scope effect, and an agent recommendation with rationale. Separate human facts and choices from agent inference. Do not pressure the human into premature commitment: confirmation here approves the brainstorming summary as an accurate discussion record, not final product intent.
 
+When a direction introduces a generic platform, framework, registry, plugin system, shared abstraction, broad configurability, or extension mechanism, ask which current demand point requires it and what concrete present benefit it produces; future extensibility alone, architectural symmetry, or a hypothetical second consumer is not a reason to enlarge the requirement. Preserve such ideas as optional future considerations unless the human identifies a current need and benefit; always keep a smallest direct alternative visible.
+
 Scale the number of questions to uncertainty. Stop when the problem and candidate directions are coherent enough for independent challenge; unresolved choices are valid output.
 
 ## Return contract

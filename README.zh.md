@@ -118,7 +118,7 @@ $requirement-council
 
 ### Cursor 审阅配置（可选）
 
-`$cursor-review` 统一维护受限、只读的 runner。配置 Cursor 与 `cursor_sdk` bridge，在 Cursor 中生成 API key，并仅将 key保存到 `~/.cursor-review/API_KEY`。首次审阅前运行它的 `scripts/cursor_review.py --check` 诊断。脚本默认使用 `grok-4.6` 和 `high` 思考强度，且不会给 Cursor 写文件或 shell 权限。
+`$cursor-review` 统一维护受限、只读的 runner。首次使用时，经人工授权后运行 `python skills/cursor-review/scripts/install_cursor_sdk.py`，将固定版本 SDK 安装到 `~/.codex/runtime/cursor-review`；runner 总是自动切换到该专用 Python。在 Cursor 中生成 API key，并仅将 key 保存到 `~/.cursor-review/API_KEY`，再运行 `scripts/cursor_review.py --check`。脚本默认使用 `grok-4.6` 和 `high` 思考强度，且不会给 Cursor 写文件或 shell 权限。
 
 ## 开源协议
 

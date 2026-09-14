@@ -1,7 +1,32 @@
 import argparse
+import os
 import sys
 import time
 from pathlib import Path
+
+
+DEFAULT_RUNTIME_PYTHON = Path.home() / ".codex" / "runtime" / "cursor-review" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+RUNTIME_PYTHON = Path(os.environ.get("CURSOR_REVIEW_RUNTIME_PYTHON", DEFAULT_RUNTIME_PYTHON)).expanduser()
+
+
+def enter_dedicated_runtime():
+    try:
+        current = Path(sys.executable).resolve()
+        target = RUNTIME_PYTHON.resolve(strict=True)
+    except OSError:
+        print(
+            "INCOMPLETE: Cursor SDK dedicated runtime is unavailable; "
+            "run scripts/install_cursor_sdk.py.",
+            file=sys.stderr,
+        )
+        return False
+    if current != target:
+        os.execv(str(target), [str(target), str(Path(__file__).resolve()), *sys.argv[1:]])
+    return True
+
+
+if not enter_dedicated_runtime():
+    raise SystemExit(2)
 
 try:
     from cursor_sdk import AgentOptions, Client, LocalAgentOptions, ModelParameterValue, ModelSelection, SendOptions
@@ -56,7 +81,11 @@ def read_api_key(api_key_file):
 def main():
     args = parse_args()
     if SDK_IMPORT_ERROR is not None:
-        print("INCOMPLETE: Cursor SDK is unavailable; install and configure cursor_sdk.", file=sys.stderr)
+        print(
+            "INCOMPLETE: Cursor SDK is unavailable in the dedicated runtime; "
+            "run scripts/install_cursor_sdk.py.",
+            file=sys.stderr,
+        )
         return 2
 
     api_key_file = Path(args.api_key_file).expanduser()

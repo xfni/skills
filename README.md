@@ -118,7 +118,7 @@ This Skill is intentionally absent from the Claude Code plugin. Its two child Ag
 
 ### Cursor review setup (optional)
 
-`$cursor-review` owns the bounded, read-only runner. Configure Cursor and the `cursor_sdk` bridge, generate an API key in Cursor, then save only that key in `~/.cursor-review/API_KEY`. Run its `scripts/cursor_review.py --check` diagnostic before the first review. It defaults to `grok-4.6` with `high` effort and never grants Cursor write or shell tools.
+`$cursor-review` owns the bounded, read-only runner. Authorize and run `python skills/cursor-review/scripts/install_cursor_sdk.py` once to install the pinned SDK in `~/.codex/runtime/cursor-review`; the runner always re-executes with that dedicated Python. Generate an API key in Cursor, save only that key in `~/.cursor-review/API_KEY`, then run `scripts/cursor_review.py --check`. It defaults to `grok-4.6` with `high` effort and never grants Cursor write or shell tools.
 
 ## License
 

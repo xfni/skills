@@ -23,9 +23,21 @@ The reviewer is independent and read-only. It may not edit artifacts, make produ
 
 ## Shared standard
 
-Review the approved baseline, changed boundary, stated non-goals, and evidence—not an imagined future system. Every finding must include an ID, category, concrete evidence, affected artifact or requirement, impact, recommendation, and verification/disposition result.
+Review the approved baseline, changed boundary, stated non-goals, and evidence—not an imagined future system. Every finding must include an ID, category, concrete evidence, affected artifact or requirement, impact, recommendation, verification/disposition result, `evidence_strength`, `blocking_status`, and a stable `recurrence_key` that identifies the underlying cause across wording or revision changes.
 
 Categories are `Blocker`, `Ambiguity`, `Scope Delta`, `Deferred`, and `Note`. A severity label or a clean report is evidence to assess, not approval. The primary agent verifies findings before changing anything. Re-review only the changed boundary, unresolved findings, and affected artifacts; do not use “no issues found” as an exit condition.
+
+### Evidence audit
+
+Build a small `CLAIM-*` ledger for conclusions that affect approval: requirement facts, repository behavior, compatibility claims, test results, and asserted risk controls. For each claim, identify its raw source, exact version or command, what it proves, and what it does not prove. Author summaries and copied excerpts are navigation aids, not primary proof.
+
+Attack selective evidence: inspect skipped/filtered tests, warnings, missing negative cases, contradictory evidence, stale outputs, and whether assertions exercise the claimed behavior; independently reproduce or recompute a risk-weighted sample of decisive claims when tools and scope allow. Otherwise mark the claim unverified and reduce `evidence_strength`. A clean report requires both contract compliance and sufficient evidence for approval-critical claims.
+
+### Finding-weight convergence
+
+Set `blocking_status` from demonstrated impact on an approved acceptance condition, correctness, security, authorization, data loss, required compatibility, or scope. A non-blocking finding is recorded with disposition and must not cause another review cycle by itself. Consolidate findings with the same `recurrence_key`; stylistic rewording does not create a new issue.
+
+No new evidence, impact, or affected boundary means the reviewer must not reopen a resolved finding or repeat the same argument. Permit at most three review cycles for one artifact lineage. If a blocking cause remains after three review cycles, stop automatic review and return it to the owning stage or `BLOCKED_REVIEW`; it must not silently pass. The cycle limit never downgrades a blocker.
 
 ## Profiles
 

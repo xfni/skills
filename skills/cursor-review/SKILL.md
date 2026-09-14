@@ -9,7 +9,11 @@ Own the Cursor connection, dependency diagnostics, and one bounded read-only rev
 
 ## Preconditions
 
-External review must be explicitly selected or authorized. Use `scripts/cursor_review.py --check` before the first run. It checks `cursor_sdk` and `~/.cursor-review/API_KEY` without printing the key. If either is unavailable, report the exact `INCOMPLETE` message and stop; never simulate equivalent coverage or retry automatically.
+External review must be explicitly selected or authorized. A verified `FLOW_CURSOR_AUTHORIZATION` from `$flow-run`, `$flow-spec`, `$flow-plan`, or `$flow-code` is already explicit authorization for its bound transmission; inherit it and must not request duplicate human confirmation. Recompute the proposed manifest and continue only when every transmitted item stays within the bound issue, worktree, stage, or manifest scope. Anything outside the bound issue, worktree, stage, or manifest, or anything covered by its sensitive-data exclusions, requires new authority or removal from the transmission.
+
+This skill uses the dedicated runtime `~/.codex/runtime/cursor-review`; the runner automatically re-executes itself with that interpreter so the calling shell's Python cannot change dependency resolution. If the runtime is missing or its pinned SDK import fails, run `python scripts/install_cursor_sdk.py`, then repeat the check. Installing or upgrading packages is an external mutation and requires the human's authorization.
+
+Use `scripts/cursor_review.py --check` before the first review. It checks `cursor_sdk` and `~/.cursor-review/API_KEY` without printing the key. If either remains unavailable, report the exact `INCOMPLETE` message and stop; never simulate equivalent coverage or retry automatically.
 
 Generate an API key in Cursor and save only the key to `~/.cursor-review/API_KEY`. Keep credentials out of repositories, prompts, logs, evidence, and commits. An explicit `--api-key-file` changes both the lookup path and the remediation message.
 

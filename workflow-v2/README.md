@@ -43,7 +43,10 @@ Link the nine directories under `skills/` into `~/.codex/skills/`. Invoke `$flow
 ```text
 flow-requirement-value.toml
 flow-requirement-risk.toml
+flow-coder.toml
 ```
+
+Copy `skills/flow-code/agents/flow-coder.toml` to `~/.codex/agents/flow-coder.toml`. The coder is created lazily only after an approved Plan reaches `flow-code`, then the same session-scoped thread is reused for sequential `TASK-*` work; it is not started when a Codex session opens.
 
 Restart Codex after installing or changing custom Agent TOMLs. The workflow requires `cursor-review` for Spec, Plan, and Code final review, and assumes `pms-issue-reader`, `grilling`, `test-driven-development`, `coding-guidelines`, and `independent-review` where stated; each skill defines its fallback or blocking behavior.
 

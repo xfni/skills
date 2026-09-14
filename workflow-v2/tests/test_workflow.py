@@ -193,6 +193,90 @@ class WorkflowV2Tests(unittest.TestCase):
         ):
             self.assertIn(value, text)
 
+    def test_requirement_swarm_rejects_unjustified_platformization(self):
+        requirement = self.skill("flow-requirement")
+        brainstorm = self.skill("flow-brainstorm")
+        for value in (
+            "smallest scope that satisfies the current success boundary",
+            "Scope Ledger",
+            "PLATFORM_RECEIPT-*",
+            "current NEED-*",
+            "measurable current benefit",
+            "smallest non-platform alternative",
+            "Future Considerations",
+            "must not enter the selected scope",
+            "Future flexibility, architectural symmetry, and hypothetical consumers are not evidence",
+            "must not enlarge candidates merely to make them different",
+        ):
+            self.assertIn(value, requirement)
+        for value in (
+            "current demand point",
+            "concrete present benefit",
+            "future extensibility alone",
+        ):
+            self.assertIn(value, brainstorm)
+
+        value_agent = (ROOT / "skills" / "flow-requirement" / "agents" / "flow-requirement-value.toml").read_text()
+        risk_agent = (ROOT / "skills" / "flow-requirement" / "agents" / "flow-requirement-risk.toml").read_text()
+        for text in (value_agent, risk_agent):
+            self.assertIn("PLATFORM_RECEIPT-*", text)
+            self.assertIn("current NEED-*", text)
+            self.assertIn("smallest non-platform alternative", text)
+        self.assertIn("default recommendation", value_agent)
+        self.assertIn("reject platformization", risk_agent)
+
+    def test_requirement_risk_simulates_constraint_interactions_before_authorization(self):
+        requirement = self.skill("flow-requirement")
+        risk_agent = (ROOT / "skills" / "flow-requirement" / "agents" / "flow-requirement-risk.toml").read_text()
+        for value in (
+            "Constraint Interaction",
+            "all individual constraints are satisfied",
+            "trigger condition",
+            "interacting constraints",
+            "emergent behavior",
+            "harmed stakeholder",
+            "feedback loop",
+            "detection signal",
+            "residual risk",
+            "Decision Brief",
+            "full Requirement remains evidence",
+        ):
+            self.assertIn(value, requirement)
+        for value in (
+            "CONSTRAINT_SCENARIO-*",
+            "all stated constraints are locally satisfied",
+            "proxy metrics",
+            "irreversible harm",
+            "feedback amplification",
+            "abnormal load",
+        ):
+            self.assertIn(value, risk_agent)
+
+    def test_reviewers_audit_evidence_and_converge_by_finding_weight(self):
+        review = (ROOT.parent / "skills" / "independent-review" / "SKILL.md").read_text()
+        for value in (
+            "Evidence audit",
+            "CLAIM-*",
+            "raw source",
+            "selective evidence",
+            "contradictory evidence",
+            "independently reproduce",
+            "evidence_strength",
+            "blocking_status",
+            "recurrence_key",
+            "No new evidence",
+            "three review cycles",
+            "must not silently pass",
+        ):
+            self.assertIn(value, review)
+
+        for skill in ("flow-spec", "flow-plan", "flow-code"):
+            text = self.skill(skill)
+            self.assertIn("finding-weight convergence", text)
+            self.assertIn("non-blocking finding must not trigger another review cycle", text)
+            self.assertIn("same recurrence_key", text)
+            self.assertIn("three review cycles", text)
+
     def test_brainstorm_adapter_contract(self):
         text = self.skill("flow-brainstorm")
         for value in (
@@ -301,7 +385,31 @@ class WorkflowV2Tests(unittest.TestCase):
             "test-first", "verification commands", "rollback", "traceability",
             "flow_step `plan`", "$flow-code",
         ):
-            self.assertIn(value, text)
+                self.assertIn(value, text)
+
+    def test_flow_cursor_authorization_is_inherited_without_reprompting(self):
+        runner = self.skill("flow-run")
+        contract = (ROOT / "orchestration-contract.md").read_text()
+        for value in (
+            "cursor_transmission_authorization",
+            "entire Flow run",
+            "must not ask the human again",
+            "issue_id",
+            "run_id",
+            "allowed_scope",
+        ):
+            self.assertIn(value, runner)
+        self.assertIn("FLOW_CURSOR_AUTHORIZATION", contract)
+        self.assertIn("inherits", contract)
+
+        cursor = (ROOT.parent / "skills" / "cursor-review" / "SKILL.md").read_text()
+        for value in (
+            "FLOW_CURSOR_AUTHORIZATION",
+            "already explicit authorization",
+            "must not request duplicate human confirmation",
+            "outside the bound issue, worktree, stage, or manifest",
+        ):
+            self.assertIn(value, cursor)
 
     def test_code_and_unit_test_contract(self):
         text = self.skill("flow-code")
@@ -311,6 +419,96 @@ class WorkflowV2Tests(unittest.TestCase):
             "must not claim integration coverage", "$flow-integration",
         ):
             self.assertIn(value, text)
+
+    def test_flow_code_uses_one_lazy_session_scoped_luna_coder(self):
+        text = self.skill("flow-code")
+        for value in (
+            "flow_coder",
+            "gpt-5.6-luna",
+            "max",
+            "only after the Plan handoff passes admission",
+            "must not spawn it at session start",
+            "one coder thread for this Session",
+            "one dependency-ready `TASK-*` at a time",
+            "reuse that same thread",
+            "coder_thread_id",
+            "active_task",
+            "completed_tasks",
+            "last_checkpoint",
+            "waiting timeout is not task failure",
+            "must never interrupt or replace the coder solely because a wait timed out",
+            "300 seconds",
+            "two consecutive wait windows",
+            "non-interrupting progress inquiry",
+            "No output, elapsed time, or absence of filesystem changes",
+            "confirmed unavailable",
+            "replacement_generation",
+            "replacement_reason",
+            "prior_coder_thread_id",
+            "CODER_THREAD_REPLACED",
+            "must not implement the same task in parallel",
+            "must not delegate",
+            "return to `$flow-plan`",
+            "close the coder thread",
+        ):
+            self.assertIn(value, text)
+
+        agent = ROOT / "skills" / "flow-code" / "agents" / "flow-coder.toml"
+        self.assertTrue(agent.is_file())
+        config = agent.read_text()
+        for value in (
+            'name = "flow_coder"',
+            'model = "gpt-5.6-luna"',
+            'model_reasoning_effort = "max"',
+            "Do not delegate",
+            "Implement only the assigned TASK-*",
+            "Do not change Requirement, Intent, Roadmap, Spec, or Plan",
+            "Return a checkpoint",
+        ):
+            self.assertIn(value, config)
+
+    def test_flow_run_controller_persists_coder_thread_state(self):
+        runner = self.skill("flow-run")
+        for value in (
+            "coder_agent",
+            "coder_thread_id",
+            "coder_model",
+            "coder_effort",
+            "active_task",
+            "completed_tasks",
+            "last_checkpoint",
+            "replacement_generation",
+            "replacement_reason",
+            "prior_coder_thread_id",
+        ):
+            self.assertIn(value, runner)
+
+        readme = (ROOT / "README.md").read_text()
+        self.assertIn("flow-coder.toml", readme)
+        self.assertIn("created lazily", readme)
+
+    def test_flow_run_reports_observable_stage_transitions(self):
+        runner = self.skill("flow-run")
+        code = self.skill("flow-code")
+        for value in (
+            "Observable status",
+            "current stage",
+            "just completed",
+            "next action",
+            "waiting for",
+            "blocking or non-blocking",
+            "before each material transition",
+        ):
+            self.assertIn(value, runner)
+        for value in (
+            "before dispatching a coder task",
+            "before waiting for the coder",
+            "after receiving its checkpoint",
+            "before GPT review",
+            "before Cursor review",
+            "sending review findings back",
+        ):
+            self.assertIn(value, code)
 
     def test_integration_contract(self):
         text = self.skill("flow-integration")

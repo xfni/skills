@@ -100,16 +100,37 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
 
     def test_cursor_review_reports_missing_sdk_without_traceback(self):
         script = SKILLS_ROOT / CURSOR_REVIEW_SKILL / "scripts" / "cursor_review.py"
+        env = dict(os.environ, CURSOR_REVIEW_RUNTIME_PYTHON=sys.executable)
         result = subprocess.run(
             [sys.executable, str(script), "--check"],
             text=True,
             capture_output=True,
             check=False,
+            env=env,
         )
         self.assertIn(result.returncode, (0, 2))
         self.assertNotIn("Traceback", result.stderr + result.stdout)
         if result.returncode == 2:
             self.assertIn("INCOMPLETE:", result.stderr + result.stdout)
+
+    def test_cursor_review_uses_a_dedicated_runtime(self):
+        skill = SKILLS_ROOT / CURSOR_REVIEW_SKILL
+        runner = (skill / "scripts" / "cursor_review.py").read_text()
+        installer = skill / "scripts" / "install_cursor_sdk.py"
+        requirements = skill / "requirements.txt"
+
+        self.assertTrue(installer.is_file())
+        self.assertTrue(requirements.is_file())
+        self.assertIn("cursor-sdk==", requirements.read_text())
+        self.assertIn('"runtime" / "cursor-review"', runner)
+        self.assertIn("os.execv", runner)
+        self.assertIn("CURSOR_REVIEW_RUNTIME_PYTHON", runner)
+        self.assertIn("venv.EnvBuilder", installer.read_text())
+        self.assertIn("requirements.txt", installer.read_text())
+
+        instructions = (skill / "SKILL.md").read_text()
+        self.assertIn("install_cursor_sdk.py", instructions)
+        self.assertIn("dedicated runtime", instructions)
 
     def test_cursor_review_is_registered_and_explicit_only(self):
         claude_manifest = (ROOT / ".claude-plugin" / "plugin.json").read_text()
@@ -132,6 +153,7 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
             prompt = temp / "brief.md"
             prompt.write_text("review")
             env = dict(os.environ, PYTHONPATH=temp_dir)
+            env["CURSOR_REVIEW_RUNTIME_PYTHON"] = sys.executable
             result = subprocess.run(
                 [sys.executable, str(script), str(temp / "missing-repo"), str(prompt), "--api-key-file", str(key)],
                 text=True,

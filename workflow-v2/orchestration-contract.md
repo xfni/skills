@@ -8,6 +8,8 @@ This protocol applies only when a stage receives a verified `FLOW_RUN_CONTEXT` c
 caller: flow-run
 run_id; issue_id; controller_path
 stage; input paths/revisions/digests or snapshot binding
+optional coder_agent: coder_thread_id; coder_model; coder_effort; active_task; completed_tasks; last_checkpoint; replacement_generation; replacement_reason; prior_coder_thread_id
+optional FLOW_CURSOR_AUTHORIZATION: issue_id; run_id; repository/worktree; allowed_stages; allowed_scope; exclusions
 ```
 
 Without that envelope, use **Direct invocation** behavior and keep the stage's normal stop-and-suggest-next response. With it, use **Orchestrated invocation** behavior: preserve every stage rule and gate, but return exactly one signal to `$flow-run` instead of ending with a manual next-skill instruction.
@@ -40,3 +42,7 @@ stage; cause; evidence; controller_path; resume_condition
 - `FLOW_ADMISSION_GATE` requests only missing issue identity or a required Codex worktree resume. `FLOW_ADMISSION_BLOCKED` reports an unsafe or inconsistent admission state. `$flow-run` persists either signal and resumes admission before any stage work.
 
 Stage-local wording such as "stop" means return control to the orchestrator when `FLOW_RUN_CONTEXT` is present. It never means present a successful child handoff as the final user response. Direct invocation semantics remain unchanged.
+
+`flow-code` alone owns the coder lifecycle. It creates `flow_coder` lazily after Plan admission, dispatches one `TASK-*` at a time to the same session-scoped thread, and writes each checkpoint into the controller's `coder_agent` state. `$flow-run` preserves and revalidates that state; it must not pre-create a coder or dispatch implementation work itself. Wait timeouts never authorize replacement. Any replacement requires confirmed thread unavailability or a stopped scope/safety violation and a durable `CODER_THREAD_REPLACED` generation record.
+
+`FLOW_CURSOR_AUTHORIZATION` is created by explicit `$flow-run` invocation and persists for its bound run, or by direct invocation of `flow-spec`, `flow-plan`, or `flow-code` for that stage. `$cursor-review` inherits it as already explicit authorization when the transmission manifest remains inside the bound issue, worktree, stage, scope, and exclusions. Neither the owning stage nor `$cursor-review` may create a duplicate human gate. Drift or scope expansion invalidates only the uncovered transmission; it never permits silently broadening the authorization.

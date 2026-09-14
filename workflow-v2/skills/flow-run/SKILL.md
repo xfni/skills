@@ -9,6 +9,8 @@ Orchestrate Flow v2 from the deepest valid checkpoint to integration evidence. R
 
 Read and follow `../../artifact-contract.md`. Require an issue ID before feature work. If the user explicitly supplied a goal, create or continue that active goal using the runtime goal mechanism; otherwise do not invent one. Before continuing, compare the runtime goal ID, issue and objective with the controller record. Continue only a matching goal; on a mismatch, pause for the human and must not replace, complete, or attach work to the other unfinished goal. Keep an active goal active across ordinary human gates.
 
+Invoking `$flow-run` is explicit authorization for the mandatory read-only Cursor reviews throughout the entire Flow run. Persist one `cursor_transmission_authorization` bound to `issue_id`, `run_id`, repository/worktree, review stages (`flow-spec`, `flow-plan`, `flow-code`), and an `allowed_scope` limited to the approved artifact chain plus necessary in-scope source context. Exclude secrets, credentials, unnecessary personal data, secret-bearing generated files, and unrelated content. Pass this binding as `FLOW_CURSOR_AUTHORIZATION` to each owning stage and `$cursor-review`; when the requested manifest stays within it, every child must treat authorization as inherited and must not ask the human again. A changed issue/worktree, unbound stage, expanded manifest, sensitive content, or actual platform permission prompt is not covered and follows its owning safety boundary.
+
 ## Resolve the starting stage
 
 Resolve admission in this order:
@@ -50,6 +52,12 @@ When the user supplies a sufficiently explicit requirement and explicitly wants 
 
 ## Run and resume
 
+### Observable status
+
+Keep the human oriented without turning internal handoffs into approval gates: before each material transition, emit one concise status update that names the current stage, what was just completed, the next action, what Agent or external operation the run is waiting for, and whether any reported defect is blocking or non-blocking. Material transitions include entering a stage, dispatching or completing a subagent task, beginning a potentially long wait, receiving review findings, sending fixes back, starting GPT or Cursor review, routing backward, and recording degraded completion.
+
+Use concrete identifiers such as `TASK-*`, milestone, Agent path, review kind, and affected snapshot. Do not expose chain-of-thought, dump the controller, ask for acknowledgement, or repeat unchanged status after every tool call. A wait timeout may produce a short heartbeat only when it changes the wait-window count or triggers the configured progress inquiry. Successful child handoffs remain internal and automatically continue after the status update.
+
 Before executing a selected stage, supply a `FLOW_RUN_CONTEXT` bound to the run, issue, controller, stage, and exact verified handoff. Consume its orchestration signal in a controller loop:
 
 - `FLOW_RUN_HANDOFF` is non-terminal: recompute its binding, update the controller, and automatically invoke the next stage in the same active turn.
@@ -62,7 +70,7 @@ A child-stage report is internal orchestration output. The root must not surface
 
 Repair controllers produced by older or interrupted orchestration. A `pending_gate: explicit_stage_invocation`, a resume condition asking the human to copy a next-stage command, or an equivalent manual relay is an obsolete orchestration state, never a valid human gate. The root must not ask the human to copy that command. Revalidate the recorded output tuple; when valid, migrate the controller to `FLOW_RUN_HANDOFF` and immediately continue its next stage. In particular, when roadmap approval and milestone selection is already recorded, continue to `flow-spec` without another selection or explicit invocation. If the tuple is invalid, route to its owning stage instead of preserving the obsolete gate.
 
-At each necessary human gate, display exactly what decision or authority is missing and pause there. Persist a `flow_step: run` controller record through the artifact-contract path rules with issue provenance, repository/worktree/branch binding, Requirement authorization, active goal reference when any, `target_milestones`, milestone states (`pending`, `completed`, or `deferred`), completed handoffs, pending stage, pending gate, exact revision/digest or snapshot binding, resume condition, open gaps, loop history, and next action. On reply, reload and revalidate the exact binding before resuming.
+At each necessary human gate, display exactly what decision or authority is missing and pause there. Persist a `flow_step: run` controller record through the artifact-contract path rules with issue provenance, repository/worktree/branch binding, Requirement authorization, active goal reference when any, `target_milestones`, milestone states (`pending`, `completed`, or `deferred`), completed handoffs, pending stage, pending gate, exact revision/digest or snapshot binding, resume condition, open gaps, loop history, and next action. Its `coder_agent` state records `coder_thread_id`, `coder_model`, `coder_effort`, `active_task`, `completed_tasks`, `last_checkpoint`, `replacement_generation`, `replacement_reason`, and `prior_coder_thread_id`; `flow-code` creates it lazily and the controller preserves it across task dispatches and resumptions. On reply, reload and revalidate the exact binding before resuming.
 
 Normal human interaction is limited to missing issue admission, requirement brainstorming, final Requirement authorization, a required Codex worktree resume, and Direct integration test-point confirmation. After Requirement authorization, Intent, Roadmap, milestone selection, Spec, Plan, Code, and governed Integration continue autonomously. Escalate only the authority-changing or unsafe conditions enumerated by the Flow admission contract. A Cursor runtime degradation is recorded and propagated without prompting unless it makes safe continuation impossible.
 
