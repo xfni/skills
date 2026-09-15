@@ -13,6 +13,8 @@ Resolve the project root from the active repository/worktree, not the shell's ar
 
 When the human specifies a directory, use that directory with the standard filename unless the human specifies a full file path. An `AGENTS.md` rule may likewise replace the directory, filename, or both. Resolve relative paths against the project root unless the governing `AGENTS.md` explicitly declares another base. Record the selected rule, source, and resolved absolute path in the non-hashed integrity/location region and handoff, never in the body. Keep the same path for every revision of the same artifact. Never overwrite a different artifact on collision; ask the human for a distinct subject or path.
 
+Default checkpoint discovery may infer an artifact kind only from the standard `<flow_step>_...` filename inside `.ai/issue/<issue_id>/`. A custom filename or location remains valid, but `$flow-run` must pass an explicit artifact-key-to-path map through `flowctl resume --inputs <json>`; filename inference is never workflow evidence. The controller verifies the artifact body, type, issue, approval, digest, upstream tuple, and milestone after receiving that map.
+
 Every workflow artifact has three physically delimited regions in this order:
 
 ```text
@@ -30,8 +32,10 @@ resolved_path: <absolute path>
 --- FLOW APPROVAL END ---
 ```
 
-`content_digest` is never inside the hashed body. Compute it from the exact bytes strictly between the body markers: UTF-8, LF line endings, no BOM, and exactly one final LF after the last body line. Preserve body order; do not sort fields or normalize whitespace. The integrity and approval regions are excluded. `approved_digest` must equal `content_digest`, and `approved_revision` must equal the body's `content_revision`.
+`content_digest` is never inside the hashed body. `flowctl artifact verify` and `flowctl artifact register` compute it from the exact bytes strictly between the body markers: UTF-8, LF line endings, no BOM, and exactly one final LF after the last body line. An Agent may render a candidate value but it is never authoritative until flowctl recomputes it. Preserve body order; do not sort fields or normalize whitespace. The integrity and approval regions are excluded. `approved_digest` must equal `content_digest`, and `approved_revision` must equal the body's `content_revision`.
 
 `confirmer` is `HUMAN` for the Flow-level Requirement authorization and for a Direct invocation gate. Under a verified `FLOW_RUN_CONTEXT`, downstream artifacts may use `ORCHESTRATED` only when the approval envelope records the exact upstream Requirement authorization, controller/run ID, scope binding, revision, and digest. `ORCHESTRATED` is derivation authority, not permission to change product intent or bypass required reviews.
 
-Any body-byte change increments `content_revision`, recomputes `content_digest`, and invalidates the approval region. Moving an artifact preserves the exact body bytes, integrity digest, and approval binding while regenerating only the excluded path metadata for the new location; recompute the body digest at the destination before accepting it.
+Any body-byte change increments `content_revision`, recomputes `content_digest`, and invalidates the approval region. Registration enforces monotonic revision and invalidates bound downstream artifacts and reviews. Moving an artifact preserves the exact body bytes, integrity digest, and approval binding while regenerating only the excluded path metadata for the new location; flowctl recomputes the body digest at the destination before accepting it.
+
+Roadmap BODY includes exactly one JSON-array field `target_milestones` in delivery order and one JSON-object field `milestone_dependencies`, whose keys and dependency values are members of that array. These fields contain every non-deferred milestone required by Intent. Flowctl validates the graph, chooses the first dependency-ready milestone, records completion from accepted Integration evidence, and alone decides whether to return to Spec or complete the run.

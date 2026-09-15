@@ -5,6 +5,27 @@ import time
 from pathlib import Path
 
 
+REPORT_BEGIN = "FLOW_REVIEW_REPORT_BEGIN"
+REPORT_END = "FLOW_REVIEW_REPORT_END"
+ERROR_BEGIN = "FLOW_REVIEW_ERROR_BEGIN"
+ERROR_END = "FLOW_REVIEW_ERROR_END"
+
+
+def emit_error(code, message):
+    import json
+
+    print(message, file=sys.stderr, flush=True)
+    print(ERROR_BEGIN, file=sys.stderr, flush=True)
+    print(json.dumps({"schema_version": 1, "code": code}), file=sys.stderr, flush=True)
+    print(ERROR_END, file=sys.stderr, flush=True)
+
+
+def emit_report(report):
+    print(REPORT_BEGIN, flush=True)
+    print(report, flush=True)
+    print(REPORT_END, flush=True)
+
+
 DEFAULT_RUNTIME_PYTHON = Path.home() / ".codex" / "runtime" / "cursor-review" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
 RUNTIME_PYTHON = Path(os.environ.get("CURSOR_REVIEW_RUNTIME_PYTHON", DEFAULT_RUNTIME_PYTHON)).expanduser()
 
@@ -14,10 +35,10 @@ def enter_dedicated_runtime():
         current = Path(sys.executable).resolve()
         target = RUNTIME_PYTHON.resolve(strict=True)
     except OSError:
-        print(
+        emit_error(
+            "SDK_UNAVAILABLE",
             "INCOMPLETE: Cursor SDK dedicated runtime is unavailable; "
             "run scripts/install_cursor_sdk.py.",
-            file=sys.stderr,
         )
         return False
     if current != target:
@@ -70,10 +91,10 @@ def read_api_key(api_key_file):
     if api_key:
         return api_key
     detail = "is empty" if api_key_file.exists() else "does not exist"
-    print(
+    emit_error(
+        "CREDENTIAL_UNAVAILABLE",
         f"INCOMPLETE: Cursor API key is not configured: {api_key_file} {detail}. "
         f"Generate an API key in Cursor and save only the key to {api_key_file}.",
-        file=sys.stderr,
     )
     return None
 
@@ -81,10 +102,10 @@ def read_api_key(api_key_file):
 def main():
     args = parse_args()
     if SDK_IMPORT_ERROR is not None:
-        print(
+        emit_error(
+            "SDK_UNAVAILABLE",
             "INCOMPLETE: Cursor SDK is unavailable in the dedicated runtime; "
             "run scripts/install_cursor_sdk.py.",
-            file=sys.stderr,
         )
         return 2
 
@@ -100,7 +121,10 @@ def main():
         repo = str(Path(args.repo).resolve(strict=True))
         prompt = Path(args.prompt_file).read_text(encoding="utf-8")
     except (OSError, UnicodeError) as exc:
-        print(f"INCOMPLETE: Cursor review input is unavailable ({type(exc).__name__}).", file=sys.stderr)
+        emit_error(
+            "INVALID_LOCAL_INPUT",
+            f"INCOMPLETE: Cursor review input is unavailable ({type(exc).__name__}).",
+        )
         return 2
     model = ModelSelection(id=args.model, params=[ModelParameterValue(id="effort", value=args.effort)])
     options = AgentOptions(
@@ -123,20 +147,23 @@ def main():
                 if last_status == "finished":
                     report = (snapshot.result or "").strip()
                     if report:
-                        print(report, flush=True)
+                        emit_report(report)
                         return 0
-                    print("INCOMPLETE: finished without terminal report", flush=True)
+                    emit_error("MISSING_TERMINAL_REPORT", "INCOMPLETE: finished without terminal report")
                     return 2
                 if last_status in TERMINAL_FAILURES:
-                    print(f"INCOMPLETE: status={last_status}", flush=True)
+                    emit_error("BACKEND_TERMINAL_FAILURE", f"INCOMPLETE: status={last_status}")
                     return 2
                 print(f"status={last_status} elapsed={int(time.monotonic() - started)}s", flush=True)
                 time.sleep(args.poll_seconds)
             elapsed = int(time.monotonic() - started)
-            print(f"INCOMPLETE: timeout agent_id={agent.agent_id} run_id={run.id} status={last_status} elapsed={elapsed}s", flush=True)
+            emit_error(
+                "PROCESS_TIMEOUT",
+                f"INCOMPLETE: timeout agent_id={agent.agent_id} run_id={run.id} status={last_status} elapsed={elapsed}s",
+            )
             return 2
     except Exception as exc:
-        print(f"INCOMPLETE: Cursor bridge failed ({type(exc).__name__}).", file=sys.stderr)
+        emit_error("BRIDGE_ERROR", f"INCOMPLETE: Cursor bridge failed ({type(exc).__name__}).")
         return 2
 
 

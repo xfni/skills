@@ -32,6 +32,32 @@ class WorkflowV2Tests(unittest.TestCase):
             self.assertTrue(metadata.is_file())
             self.assertIn("allow_implicit_invocation: false", metadata.read_text())
 
+    def test_flowctl_is_the_only_mechanical_progression_authority(self):
+        contract = (ROOT / "flowctl-contract.md").read_text()
+        for value in (
+            "sole writer", "must not edit", "flowctl status", "artifact register",
+            "review begin", "review submit", "review cursor", "handoff accept",
+            "signal record",
+            "expected-revision", "STATE_CONFLICT", "structured JSON",
+            "does not trust caller-supplied digests", "resume",
+        ):
+            self.assertIn(value, contract)
+        for name in SKILLS:
+            text = self.skill(name)
+            self.assertIn("flowctl-contract.md", text, name)
+            self.assertIn("flowctl status", text, name)
+            self.assertIn("must not edit the controller", text, name)
+        runner = self.skill("flow-run")
+        self.assertIn("flowctl resume", runner)
+        for name in ("flow-requirement", "flow-intent", "flow-roadmap", "flow-spec", "flow-plan", "flow-code", "flow-integration"):
+            self.assertIn("flowctl artifact register", self.skill(name), name)
+            self.assertIn("flowctl handoff accept", self.skill(name), name)
+        for name in ("flow-spec", "flow-plan", "flow-code"):
+            text = self.skill(name)
+            self.assertIn("flowctl review begin", text, name)
+            self.assertIn("flowctl review submit", text, name)
+            self.assertIn("flowctl review cursor", text, name)
+
     def test_isolated_codex_plugin_exposes_skill_directory(self):
         manifest = json.loads((ROOT / ".codex-plugin" / "plugin.json").read_text())
         self.assertEqual("./skills/", manifest["skills"])
@@ -47,7 +73,7 @@ class WorkflowV2Tests(unittest.TestCase):
             "$flow-brainstorm", "$flow-requirement", "$flow-intent",
             "$flow-roadmap", "$flow-spec", "$flow-plan", "$flow-code",
             "$flow-integration", "automatically invoke the next stage",
-            "necessary human gate", "resume from the same checkpoint",
+            "necessary human gate", "FLOW_RUN_RESUMED",
             "route backward", "do not bypass", "mark the goal complete",
             "target_milestones", "pending", "completed", "deferred",
             "standalone Spec is non-authoritative source evidence",
@@ -277,6 +303,29 @@ class WorkflowV2Tests(unittest.TestCase):
             self.assertIn("same recurrence_key", text)
             self.assertIn("three review cycles", text)
 
+    def test_review_transport_and_discovery_contracts_are_explicit(self):
+        flowctl = (ROOT / "flowctl-contract.md").read_text()
+        for value in (
+            "FLOW_REVIEW_REPORT_BEGIN",
+            "FLOW_REVIEW_REPORT_END",
+            "FLOW_REVIEW_ERROR_BEGIN",
+            "FLOW_REVIEW_ERROR_END",
+            "two `UNCLASSIFIED`",
+            "BLOCKED_REVIEW",
+            "not degradable",
+        ):
+            self.assertIn(value, flowctl)
+        self.assertIn("cannot force the host Agent to invoke flowctl", flowctl)
+        self.assertIn("detectable non-progression", flowctl)
+
+        artifact = (ROOT / "artifact-contract.md").read_text()
+        self.assertIn("custom filename", artifact)
+        self.assertIn("--inputs", artifact)
+
+        orchestration = (ROOT / "orchestration-contract.md").read_text()
+        self.assertIn("context-independent", orchestration)
+        self.assertIn("context-dependent transition", orchestration)
+
     def test_brainstorm_adapter_contract(self):
         text = self.skill("flow-brainstorm")
         for value in (
@@ -358,7 +407,7 @@ class WorkflowV2Tests(unittest.TestCase):
             text = self.skill(name)
             for value in (
                 "retry exactly once",
-                "not a review finding",
+                "is not degradable",
                 status,
                 "CURSOR_REVIEW_GAP",
                 "final completion report",

@@ -9,6 +9,8 @@ Read and enforce `../../flow-contract.md`; silently verify its issue, controller
 Read and follow `../../artifact-contract.md` for every artifact revision, canonical SHA-256 digest, and approval operation.
 When `FLOW_RUN_CONTEXT` is present, also read and follow `../../orchestration-contract.md`; return its signal instead of a manual next-skill instruction.
 
+Read and enforce `../../flowctl-contract.md`. Run `flowctl status` at entry, `flowctl artifact register` after writing Requirement, and `flowctl handoff accept` with schema-valid JSON after authorization. The skill must not edit the controller or infer acceptance from its own output.
+
 Turn a feature idea into an evidence-backed `requirement.md` through human brainstorming followed by an autonomous agent swarm. This stage explores choices and uncertainty; it must not create intent.md or make the human's product commitment.
 
 **REQUIRED SUB-SKILL:** Use flow-brainstorm for the human brainstorming substage. If it is unavailable, end `BLOCKED_DEPENDENCY`; do not invoke `superpowers:brainstorming` or silently reproduce another brainstorming flow.

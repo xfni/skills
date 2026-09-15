@@ -7,6 +7,8 @@ description: Use when a requirement workflow needs human exploration before auto
 
 Read and enforce `../../flow-contract.md`. Verify the inherited issue and worktree binding silently before discussion; use its admission gate when directly invoked without a valid controller.
 
+Read and enforce `../../flowctl-contract.md`. Run `flowctl status` at entry. The skill must not edit the controller or event log; it returns semantic brainstorming input to its owner and cannot advance Flow itself.
+
 Explore a feature idea with the human and return a bounded input for `$flow-requirement`. This adapts the questioning and option-comparison techniques of Superpowers Brainstorming; the Flow stage boundary is authoritative.
 
 ## Explore

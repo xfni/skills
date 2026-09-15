@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Flow v2 non-success signal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "signal", "issue_id", "run_id", "stage", "cause", "evidence", "resume_condition"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "signal": {"enum": ["FLOW_RUN_HUMAN_GATE", "FLOW_RUN_BLOCKED", "FLOW_RUN_ROUTE_BACK", "FLOW_RUN_RESUMED"]},
+    "issue_id": {"type": "string", "minLength": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "stage": {"type": "string", "minLength": 1},
+    "cause": {"type": "string", "minLength": 1},
+    "evidence": {"type": "string", "minLength": 1},
+    "resume_condition": {"type": "string", "minLength": 1},
+    "owner_stage": {"type": "string"},
+    "next_stage": {"type": "string"},
+    "gate": {"type": "string"}
+  }
+}

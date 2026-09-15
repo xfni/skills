@@ -9,6 +9,8 @@ Read and enforce `../../flow-contract.md`; silently verify its issue, controller
 Read and follow `../../artifact-contract.md` for every artifact revision, digest, and approval operation.
 When `FLOW_RUN_CONTEXT` is present, also read and follow `../../orchestration-contract.md`; return its signal instead of a manual next-skill instruction.
 
+Read and enforce `../../flowctl-contract.md`. Run `flowctl status` at entry, `flowctl artifact register` after writing Intent, and `flowctl handoff accept` with schema-valid JSON. The skill must not edit the controller or advance on an unaccepted handoff.
+
 Read the human-authorized `requirement.md` and write the authoritative `intent.md`. This stage normalizes an existing commitment; it must not create roadmap content or reopen settled choices.
 
 ## Admission

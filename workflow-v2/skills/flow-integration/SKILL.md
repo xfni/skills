@@ -9,6 +9,8 @@ Read and enforce `../../flow-contract.md`; silently verify its issue, controller
 Read and follow `../../artifact-contract.md` when verifying artifact revisions, digests, and approvals.
 When `FLOW_RUN_CONTEXT` is present, also read and follow `../../orchestration-contract.md`; return its signal instead of a manual next-skill instruction.
 
+Read and enforce `../../flowctl-contract.md`. Run `flowctl status` at entry, `flowctl artifact register` for Integration evidence, and `flowctl handoff accept` for terminal completion. The skill must not edit the controller or declare completion before controller acceptance.
+
 Execute a confirmed integration contract against a frozen code snapshot and produce integration evidence. The default execution target is a temporary local service built or launched from the current worktree and frozen snapshot. Validate it by sending real requests across real boundaries; do not repair production code inside this stage.
 
 ## Admission modes
@@ -93,4 +95,4 @@ Record `PASSED`, `FAILED`, or `BLOCKED` for every governed `TESTCASE-*` and ever
 
 In Governed mode, route every failure to its owning stage: implementation defect → `$flow-code`; missing or incorrect task/seam → `$flow-plan`; behavioral contract gap → `$flow-spec`; milestone boundary/order problem → `$flow-roadmap`; product intent conflict → `$flow-intent`. In Direct mode, report the evidenced failure category and required next action without pretending an absent upstream artifact exists; suggest the appropriate Flow stage only if the human chooses to enter that workflow. Do not claim completion while any required scenario is failed or blocked.
 
-Report the integration evidence path, status, tested code snapshot, coverage gaps, and required next action. Under `FLOW_RUN_CONTEXT`, return `FLOW_RUN_HANDOFF` only when the aggregate result is `PASSED`, `FLOW_RUN_ROUTE_BACK` when the aggregate result is `FAILED` with evidence plus the classified `owner_stage` and `next_stage`, `FLOW_RUN_HUMAN_GATE` for Direct test-point confirmation, or `FLOW_RUN_BLOCKED` for a true blocked result; `$flow-run` decides the next milestone or `FLOW_RUN_COMPLETE`. Do not deploy, push, or mark a release complete automatically.
+Report the integration evidence path, status, tested code snapshot, coverage gaps, and required next action. Under `FLOW_RUN_CONTEXT`, return `FLOW_RUN_HANDOFF` with `next_stage: auto` only when the aggregate result is `PASSED`; flowctl marks the milestone complete and decides the next dependency-ready milestone or terminal completion. Return `FLOW_RUN_ROUTE_BACK` when the aggregate result is `FAILED` with evidence plus the classified `owner_stage` and `next_stage`, `FLOW_RUN_HUMAN_GATE` for Direct test-point confirmation, or `FLOW_RUN_BLOCKED` for a true blocked result. Do not deploy, push, or mark a release complete automatically.
