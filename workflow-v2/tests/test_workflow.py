@@ -88,7 +88,7 @@ class WorkflowV2Tests(unittest.TestCase):
         self.assertIn("confirmed intent.md", text)
         self.assertIn("start at `$flow-roadmap`", text)
         self.assertIn("COMPLETE_WITH_DEFECT", text)
-        self.assertIn("CURSOR_REVIEW_GAP", text)
+        self.assertIn("EXTERNAL_REVIEW_GAP", text)
 
     def test_flow_run_discovers_issue_then_artifacts_or_asks_for_paths(self):
         text = self.skill("flow-run")
@@ -379,17 +379,18 @@ class WorkflowV2Tests(unittest.TestCase):
         ):
             self.assertIn(value, text)
 
-    def test_spec_plan_code_use_gpt_then_mandatory_cursor_review(self):
+    def test_spec_plan_code_use_independent_lanes_and_astra_consistency_review(self):
         for name in ("flow-spec", "flow-plan", "flow-code"):
             text = self.skill(name)
             for value in (
                 "**REQUIRED SUB-SKILL:** Use independent-review",
                 "**REQUIRED SUB-SKILL:** Use cursor-review",
+                "**REQUIRED SUB-SKILL:** Use ibrain-review",
                 "gpt-5.6-sol", "high", "gpt-6-astra", "medium",
-                "root agent", "difficulty", "GPT → Cursor",
-                "mandatory final review", "automatically authorizes",
+                "root agent", "difficulty", "GPT Lane", "Cursor Lane",
+                "final consistency review", "automatically authorizes",
                 "in-scope code and documents", "secrets",
-                "BLOCKED_REVIEW", "rerun the GPT review",
+                "BLOCKED_REVIEW", "glm-5.3",
                 "review_binding", "immediately before dispatch and after receipt",
                 "missing/mismatched binding", "stale or unbound report",
             ):
@@ -397,7 +398,7 @@ class WorkflowV2Tests(unittest.TestCase):
             self.assertNotIn("gpt-5.6-sol` with `medium", text)
             self.assertNotIn("gpt-6-astra` with `high", text)
 
-    def test_cursor_runtime_failure_has_one_retry_and_durable_defect_handoff(self):
+    def test_cursor_runtime_failure_falls_back_to_ibrain_before_defect_handoff(self):
         expected_status = {
             "flow-spec": "APPROVED_WITH_DEFECT",
             "flow-plan": "APPROVED_WITH_DEFECT",
@@ -409,7 +410,9 @@ class WorkflowV2Tests(unittest.TestCase):
                 "retry exactly once",
                 "is not degradable",
                 status,
-                "CURSOR_REVIEW_GAP",
+                "EXTERNAL_REVIEW_GAP",
+                "ibrain-review",
+                "glm-5.3",
                 "final completion report",
                 "handoff",
                 "full `review_binding` and binding ID",
@@ -418,11 +421,11 @@ class WorkflowV2Tests(unittest.TestCase):
             self.assertNotIn("`INCOMPLETE`, drift", text)
 
         self.assertIn("only when no gap is open", self.skill("flow-plan"))
-        self.assertIn("even when this stage's own Cursor review succeeds", self.skill("flow-code"))
+        self.assertIn("both Cursor and iBrain", self.skill("flow-code"))
 
         integration = self.skill("flow-integration")
         self.assertIn("COMPLETE_WITH_DEFECT", integration)
-        self.assertIn("CURSOR_REVIEW_GAP", integration)
+        self.assertIn("EXTERNAL_REVIEW_GAP", integration)
         self.assertIn("final report", integration)
         self.assertIn("regardless of the claimed Code status", integration)
         self.assertIn("reject the inconsistent tuple `COMPLETE` plus an open gap", integration)

@@ -7,7 +7,7 @@ from .artifacts import verify_artifact
 from .errors import FlowctlError
 from .handoff import accept_handoff
 from .resume import reconcile_resume, resume_flow
-from .reviews import begin_review, run_cursor_review, submit_review
+from .reviews import begin_review, run_cursor_review, run_ibrain_review, submit_review
 from .snapshot import record_snapshot
 from .signals import record_signal
 from .state import audit_state, initialize_state, read_consistent_state, register_artifact, update_coder_state, validate_admission
@@ -68,6 +68,13 @@ def _parser():
     cursor.add_argument("--effort", default="high")
     cursor.add_argument("--timeout-seconds", type=int, default=960)
     cursor.add_argument("--expected-revision", required=True, type=int)
+    ibrain = review_commands.add_parser("ibrain")
+    ibrain.add_argument("--state", required=True)
+    ibrain.add_argument("--artifact-key", required=True)
+    ibrain.add_argument("--prompt", required=True)
+    ibrain.add_argument("--runner", required=True)
+    ibrain.add_argument("--timeout-seconds", type=int, default=960)
+    ibrain.add_argument("--expected-revision", required=True, type=int)
 
     handoff = commands.add_parser("handoff")
     handoff_commands = handoff.add_subparsers(dest="handoff_command", required=True)
@@ -150,6 +157,13 @@ def dispatch(args):
         value = run_cursor_review(
             args.state, args.artifact_key, args.prompt, args.runner,
             args.model, args.effort, args.timeout_seconds, args.expected_revision,
+        )
+        return {"ok": True, "review": value}
+    if args.command == "review" and args.review_command == "ibrain":
+        _validate_command_admission(args.state)
+        value = run_ibrain_review(
+            args.state, args.artifact_key, args.prompt, args.runner,
+            args.timeout_seconds, args.expected_revision,
         )
         return {"ok": True, "review": value}
     if args.command == "handoff" and args.handoff_command == "accept":

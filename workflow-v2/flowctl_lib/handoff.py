@@ -103,48 +103,50 @@ def accept_handoff(state_path, handoff_path, expected_state_revision):
         completion_quality = "COMPLETE"
         if handoff["from_stage"] in REVIEWED_STAGES:
             reject_if_unclassified_exhausted(state, handoff["artifact_key"], artifact["digest"])
-            gpt_results = [
-                attempt for attempt in state["reviews"]["attempts"].values()
-                if attempt.get("artifact_key") == handoff["artifact_key"]
-                and attempt.get("backend") == "gpt"
-                and attempt.get("classification") == "REVIEW_RESULT"
-                and _attempt_boundary_current(attempt, artifact, snapshot_digest)
-            ]
-            latest_gpt = max(gpt_results, key=lambda item: item.get("completed_state_revision", 0), default=None)
-            if not latest_gpt or latest_gpt.get("status") != "PASSED":
+            lanes = state.get("reviews", {}).get("lanes", {}).get(handoff["artifact_key"], {})
+            if lanes.get("gpt", {}).get("status") != "PASSED":
                 raise FlowctlError("GPT_REVIEW_REQUIRED")
-            latest_gpt_revision = latest_gpt.get("completed_state_revision", 0)
-            cursor_attempts = [
+            for backend in ("cursor", "ibrain"):
+                external = lanes.get(backend, {})
+                if external.get("digest") == artifact["digest"] and external.get("status") in {"FAILED", "INCOMPLETE"}:
+                    code = "CURSOR_REVIEW_FAILED" if backend == "cursor" else "IBRAIN_REVIEW_FAILED"
+                    raise FlowctlError(code)
+            consistency = lanes.get("consistency", {})
+            if consistency.get("status") != "PASSED" or consistency.get("digest") != artifact["digest"]:
+                raise FlowctlError("CONSISTENCY_REVIEW_REQUIRED")
+            open_external = [
                 attempt for attempt in state["reviews"]["attempts"].values()
                 if attempt.get("artifact_key") == handoff["artifact_key"]
-                and attempt.get("backend") == "cursor"
-                and attempt.get("completed_state_revision", 0) > latest_gpt_revision
-                and _attempt_boundary_current(attempt, artifact, snapshot_digest)
-            ]
-            open_cursor = [
-                attempt for attempt in state["reviews"]["attempts"].values()
-                if attempt.get("artifact_key") == handoff["artifact_key"]
-                and attempt.get("backend") == "cursor" and attempt.get("status") == "STARTED"
+                and attempt.get("backend") in {"cursor", "ibrain", "consistency"}
+                and attempt.get("status") == "STARTED"
                 and attempt.get("eligible", True)
             ]
-            if open_cursor:
-                raise FlowctlError("CURSOR_REVIEW_IN_PROGRESS")
-            substantive = [item for item in cursor_attempts if item.get("classification") == "REVIEW_RESULT"]
-            if any(item.get("status") == "FAILED" for item in substantive):
-                raise FlowctlError("CURSOR_REVIEW_FAILED")
-            if substantive:
-                latest_cursor = max(substantive, key=lambda item: item.get("completed_state_revision", 0))
-                if latest_cursor.get("status") != "PASSED":
-                    raise FlowctlError("CURSOR_REVIEW_FAILED")
-            else:
-                runtime_failures = [item for item in cursor_attempts if item.get("classification") == "RUN_ERROR"]
-                unknown = [item for item in cursor_attempts if item.get("classification") not in {"RUN_ERROR"}]
-                if unknown or len(runtime_failures) != 2:
-                    raise FlowctlError("CURSOR_REVIEW_REQUIRED", attempts=len(runtime_failures))
+            if open_external:
+                raise FlowctlError("EXTERNAL_REVIEW_IN_PROGRESS")
+            external_pass = any(
+                lanes.get(name, {}).get("status") == "PASSED"
+                and lanes.get(name, {}).get("digest") == artifact["digest"]
+                for name in ("cursor", "ibrain")
+            )
+            if not external_pass:
+                cursor_failures = [
+                    item for item in state["reviews"]["attempts"].values()
+                    if item.get("artifact_key") == handoff["artifact_key"]
+                    and item.get("backend") == "cursor" and item.get("classification") == "RUN_ERROR"
+                    and item.get("artifact_digest") == artifact["digest"] and item.get("eligible", True)
+                ]
+                ibrain_failures = [
+                    item for item in state["reviews"]["attempts"].values()
+                    if item.get("artifact_key") == handoff["artifact_key"]
+                    and item.get("backend") == "ibrain" and item.get("classification") == "RUN_ERROR"
+                    and item.get("artifact_digest") == artifact["digest"] and item.get("eligible", True)
+                ]
+                if len(cursor_failures) != 2 or len(ibrain_failures) != 2:
+                    raise FlowctlError("EXTERNAL_REVIEW_REQUIRED")
                 completion_quality = "COMPLETE_WITH_DEFECT"
                 state.setdefault("open_gaps", []).append({
-                    "type": "CURSOR_REVIEW_GAP", "artifact_key": handoff["artifact_key"],
-                    "attempt_ids": [item["attempt_id"] for item in runtime_failures],
+                    "type": "EXTERNAL_REVIEW_GAP", "artifact_key": handoff["artifact_key"],
+                    "attempt_ids": [item["attempt_id"] for item in cursor_failures + ibrain_failures],
                 })
         if handoff["from_stage"] == "flow-roadmap":
             ready = _ready_milestones(state)

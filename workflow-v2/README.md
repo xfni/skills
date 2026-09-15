@@ -23,14 +23,14 @@ $flow-integration  -> integration evidence
 | `flow-requirement` | Two-role autonomous agent swarm and final product boundary | Human authorizes the final Requirement once. |
 | `flow-intent` | Normalize the authorized Requirement into authoritative intent | Autonomous under `flow-run`; unresolved product choices route back. |
 | `flow-roadmap` | Milestones, dependencies, and acceptance direction | Autonomous under `flow-run`; milestones are selected deterministically. |
-| `flow-spec` | Observable behavioral rules for that milestone | GPT → Cursor review, then orchestrated approval. |
-| `flow-plan` | File-level executable tasks and verification contract | GPT → Cursor review, then orchestrated approval. |
+| `flow-spec` | Observable behavioral rules for that milestone | Independent GPT and external lanes, then Astra consistency review. |
+| `flow-plan` | File-level executable tasks and verification contract | Independent GPT and external lanes, then Astra consistency review. |
 | `flow-code` | TDD implementation and unit/regression evidence | No integration claim; blocking findings stop completion. |
 | `flow-integration` | Cross-component and end-to-end validation | Missing environment or authority is reported as blocked. |
 
 Integration runs the frozen worktree application as a temporary local system under test, sends real protocol requests, and records lifecycle and observation evidence. Supporting middleware may use authorized isolated test-environment dependencies and need not be started in local Docker; local containers are fallback or scenario-specific infrastructure. A remote deployment of the application is allowed only for explicitly authorized deployment behavior; an outdated remote deployment never replaces the required local attempt.
 
-`flow-spec`, `flow-plan`, and `flow-code` use a GPT → Cursor review gate. The root selects either `gpt-5.6-sol`/`high` or `gpt-6-astra`/`medium` by requirement difficulty; after GPT passes, `$cursor-review` performs the final review. A revision caused by Cursor restarts the full gate. A Cursor runtime failure is retried exactly once; a second runtime failure may continue only as `APPROVED_WITH_DEFECT` or `COMPLETE_WITH_DEFECT`, with a durable `CURSOR_REVIEW_GAP` propagated and shown to the human. Invoking one of these three stages authorizes sending only its necessary in-scope code and documents to Cursor; secrets, credentials, unnecessary personal data, secret-bearing generated files, and unrelated content remain excluded.
+`flow-spec`, `flow-plan`, and `flow-code` use independently owned GPT and external review lanes. The selected GPT rechecks GPT findings; Cursor rechecks Cursor findings. Cursor runtime failure is retried once, then `$ibrain-review`/`glm-5.3` substitutes and likewise owns its findings. A fresh `gpt-6-astra`/`medium` performs final consistency review after lane convergence. If both external backends are unavailable, consistency must still pass and completion is marked with durable `EXTERNAL_REVIEW_GAP`. Stage invocation authorizes only necessary in-scope review material and excludes secrets and unrelated content.
 
 `intent.md` is authoritative for product scope. `requirement.md` remains the evidence and alternatives record. Roadmap reads both. Later stages consume exact approved revision tuples and return upstream instead of silently changing an earlier decision.
 
@@ -48,7 +48,7 @@ flow-coder.toml
 
 Copy `skills/flow-code/agents/flow-coder.toml` to `~/.codex/agents/flow-coder.toml`. The coder is created lazily only after an approved Plan reaches `flow-code`, then the same session-scoped thread is reused for sequential `TASK-*` work; it is not started when a Codex session opens.
 
-Restart Codex after installing or changing custom Agent TOMLs. The workflow requires `cursor-review` for Spec, Plan, and Code final review, and assumes `pms-issue-reader`, `grilling`, `test-driven-development`, `coding-guidelines`, and `independent-review` where stated; each skill defines its fallback or blocking behavior.
+Restart Codex after installing or changing custom Agent TOMLs. Spec, Plan, and Code require `cursor-review`, with `ibrain-review`/`glm-5.3` as its controller-selected runtime backup, plus `independent-review` and the final Astra consistency review. Other stages assume `pms-issue-reader`, `grilling`, `test-driven-development`, and `coding-guidelines` where stated; each skill defines its fallback or blocking behavior.
 
 All normal command results are JSON. Typical orchestration is `flowctl init`, `flowctl resume`, stage work, `flowctl artifact register`, review commands where required, and `flowctl handoff accept`. Always use the latest returned `state_revision` as the next mutation's `--expected-revision`.
 

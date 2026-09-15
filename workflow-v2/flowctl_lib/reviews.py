@@ -22,6 +22,10 @@ RUN_ERROR_CODES = {
     "TLS_ERROR",
     "PROCESS_TIMEOUT",
     "BRIDGE_ERROR",
+    "BACKEND_UNAVAILABLE",
+    "RESPONSES_UNAVAILABLE",
+    "PROCESS_UNAVAILABLE",
+    "BACKEND_PROCESS_FAILURE",
 }
 UNCLASSIFIED_LIMIT = 2
 
@@ -45,7 +49,7 @@ def reject_if_unclassified_exhausted(state, artifact_key, artifact_digest):
 
 
 def begin_review(state_path, backend, stage, artifact_key, model, effort, expected_state_revision):
-    if backend not in {"gpt", "cursor"}:
+    if backend not in {"gpt", "cursor", "ibrain", "consistency"}:
         raise FlowctlError("INVALID_REVIEW_BACKEND")
     with locked_state(state_path, expected_state_revision) as state:
         reject_if_paused(state)
@@ -71,15 +75,11 @@ def begin_review(state_path, backend, stage, artifact_key, model, effort, expect
                 "REVIEW_ATTEMPT_IN_PROGRESS",
                 attempt_ids=[item["attempt_id"] for item in open_attempts],
             )
-        if backend == "cursor":
-            gpt_results = [
-                item for item in state["reviews"]["attempts"].values()
-                if item.get("artifact_key") == artifact_key and item.get("backend") == "gpt"
-                and item.get("classification") == "REVIEW_RESULT" and _eligible(item)
-            ]
-            latest_gpt = max(gpt_results, key=lambda item: item.get("completed_state_revision", 0), default=None)
-            if not latest_gpt or latest_gpt.get("status") != "PASSED":
+        lanes = state.setdefault("reviews", {}).setdefault("lanes", {}).setdefault(artifact_key, {})
+        if backend in {"cursor", "ibrain", "consistency"}:
+            if lanes.get("gpt", {}).get("status") != "PASSED":
                 raise FlowctlError("GPT_REVIEW_REQUIRED")
+        if backend == "cursor":
             runtime_failures = sum(
                 1 for item in state["reviews"]["attempts"].values()
                 if item.get("artifact_key") == artifact_key and item.get("backend") == "cursor"
@@ -88,14 +88,37 @@ def begin_review(state_path, backend, stage, artifact_key, model, effort, expect
             )
             if runtime_failures >= 2:
                 raise FlowctlError("CURSOR_RETRY_EXHAUSTED", attempts=runtime_failures)
-            cursor_results = [
-                item for item in state["reviews"]["attempts"].values()
-                if item.get("artifact_key") == artifact_key and item.get("backend") == "cursor"
-                and item.get("classification") == "REVIEW_RESULT" and _eligible(item)
-            ]
-            latest_cursor = max(cursor_results, key=lambda item: item.get("completed_state_revision", 0), default=None)
-            if latest_cursor:
-                code = "REVIEW_ALREADY_PASSED" if latest_cursor.get("status") == "PASSED" else "ARTIFACT_REVISION_REQUIRED"
+        elif backend == "ibrain":
+            if model != "glm-5.3":
+                raise FlowctlError("IBRAIN_MODEL_REQUIRED")
+            cursor_failures = _runtime_failure_count_for(state, artifact_key, "cursor", artifact["digest"])
+            if cursor_failures < 2 and not lanes.get("ibrain_activated"):
+                raise FlowctlError("CURSOR_RETRY_REQUIRED", attempts=cursor_failures)
+            if _runtime_failure_count_for(state, artifact_key, "ibrain", artifact["digest"]) >= 2:
+                raise FlowctlError("IBRAIN_RETRY_EXHAUSTED")
+            lanes["ibrain_activated"] = True
+        elif backend == "consistency":
+            if model != "gpt-6-astra" or effort != "medium":
+                raise FlowctlError("CONSISTENCY_MODEL_REQUIRED")
+            external_pass = any(
+                lanes.get(name, {}).get("status") == "PASSED"
+                and lanes.get(name, {}).get("digest") == artifact["digest"]
+                for name in ("cursor", "ibrain")
+            )
+            external_exhausted = (
+                _runtime_failure_count_for(state, artifact_key, "cursor", artifact["digest"]) >= 2
+                and _runtime_failure_count_for(state, artifact_key, "ibrain", artifact["digest"]) >= 2
+            )
+            if not external_pass and not external_exhausted:
+                raise FlowctlError("EXTERNAL_REVIEW_REQUIRED")
+            if lanes.get("consistency_attempts", 0) >= 3:
+                raise FlowctlError("CONSISTENCY_CYCLE_LIMIT")
+        latest_lane = lanes.get(backend)
+        if (backend != "gpt" and latest_lane
+                and latest_lane.get("classification") == "REVIEW_RESULT"
+                and latest_lane.get("digest") == artifact["digest"]):
+            if latest_lane.get("status") in {"PASSED", "FAILED", "INCOMPLETE"}:
+                code = "REVIEW_ALREADY_PASSED" if latest_lane.get("status") == "PASSED" else "ARTIFACT_REVISION_REQUIRED"
                 raise FlowctlError(code)
         completed_cycles = sum(
             1 for item in state["reviews"]["attempts"].values()
@@ -121,6 +144,16 @@ def begin_review(state_path, backend, stage, artifact_key, model, effort, expect
         state["pending_action"] = f"review:{backend}:await-result"
         state = commit_state(state_path, state, "REVIEW_STARTED", attempt)
         return {**attempt, "state_revision": state["state_revision"]}
+
+
+def _runtime_failure_count_for(state, artifact_key, backend, artifact_digest):
+    return sum(
+        1 for item in state["reviews"]["attempts"].values()
+        if item.get("artifact_key") == artifact_key
+        and item.get("backend") == backend
+        and item.get("classification") == "RUN_ERROR" and _eligible(item)
+        and item.get("artifact_digest") == artifact_digest
+    )
 
 
 def _runtime_failure_count(state, attempt):
@@ -189,6 +222,10 @@ def record_process_result(state_path, attempt_id, exit_code, stdout, stderr, tim
             )
         elif attempt["retry_count"] < 2:
             state["pending_action"] = f"review:{attempt['backend']}:retry"
+        elif attempt["backend"] == "cursor":
+            state["pending_action"] = "review:ibrain"
+        elif attempt["backend"] == "ibrain":
+            state["pending_action"] = "review:consistency"
         else:
             state["pending_action"] = f"handoff:{state['current_stage'].removeprefix('flow-')}:with-defect"
         state = commit_state(state_path, state, "REVIEW_PROCESS_RECORDED", {
@@ -238,8 +275,8 @@ def _extract_json_report(output, digest):
     return report
 
 
-def run_cursor_review(state_path, artifact_key, prompt_path, runner_path, model, effort,
-                      timeout_seconds, expected_state_revision):
+def run_external_review(state_path, backend, artifact_key, prompt_path, runner_path, model, effort,
+                        timeout_seconds, expected_state_revision):
     from .state import load_state
 
     state = load_state(state_path)
@@ -253,14 +290,15 @@ def run_cursor_review(state_path, artifact_key, prompt_path, runner_path, model,
     if artifact["path"] not in prompt or artifact["digest"] not in prompt:
         raise FlowctlError("REVIEW_PROMPT_BINDING_MISMATCH")
     attempt = begin_review(
-        state_path, "cursor", state["current_stage"], artifact_key, model, effort,
+        state_path, backend, state["current_stage"], artifact_key, model, effort,
         expected_state_revision,
     )
     command = [
         sys.executable, str(runner_path), state["worktree_path"], str(prompt_path),
-        "--model", model, "--effort", effort,
-        "--timeout-seconds", str(timeout_seconds),
+        "--model", model, "--timeout-seconds", str(timeout_seconds),
     ]
+    if backend == "cursor":
+        command.extend(["--effort", effort])
     timed_out = False
     try:
         result = subprocess.run(command, text=True, capture_output=True, timeout=timeout_seconds + 30)
@@ -307,6 +345,22 @@ def run_cursor_review(state_path, artifact_key, prompt_path, runner_path, model,
     )
 
 
+def run_cursor_review(state_path, artifact_key, prompt_path, runner_path, model, effort,
+                      timeout_seconds, expected_state_revision):
+    return run_external_review(
+        state_path, "cursor", artifact_key, prompt_path, runner_path, model, effort,
+        timeout_seconds, expected_state_revision,
+    )
+
+
+def run_ibrain_review(state_path, artifact_key, prompt_path, runner_path,
+                      timeout_seconds, expected_state_revision):
+    return run_external_review(
+        state_path, "ibrain", artifact_key, prompt_path, runner_path, "glm-5.3", "medium",
+        timeout_seconds, expected_state_revision,
+    )
+
+
 def _contains_terminal_json(output):
     decoder = json.JSONDecoder()
     for index, char in enumerate(output):
@@ -336,8 +390,8 @@ def submit_review(state_path, attempt_id, report_path, expected_state_revision, 
             raise FlowctlError("REVIEW_ATTEMPT_NOT_FOUND")
         _validate_open_attempt(state, attempt)
         _verify_attempt_snapshot(state, attempt)
-        if attempt["backend"] == "cursor" and not controller_executed:
-            raise FlowctlError("CURSOR_CONTROLLER_EXECUTION_REQUIRED")
+        if attempt["backend"] in {"cursor", "ibrain"} and not controller_executed:
+            raise FlowctlError("EXTERNAL_CONTROLLER_EXECUTION_REQUIRED")
         artifact = state["artifacts"].get(attempt["artifact_key"])
         if not artifact:
             raise FlowctlError("ARTIFACT_NOT_REGISTERED")
@@ -379,10 +433,23 @@ def submit_review(state_path, attempt_id, report_path, expected_state_revision, 
             ),
             "completed_state_revision": expected_state_revision + 1,
         })
+        lanes = state.setdefault("reviews", {}).setdefault("lanes", {}).setdefault(attempt["artifact_key"], {})
+        lanes[attempt["backend"]] = {
+            "status": attempt["status"], "digest": attempt["artifact_digest"],
+            "attempt_id": attempt_id, "classification": attempt["classification"],
+        }
+        if attempt["backend"] == "consistency":
+            lanes["consistency_attempts"] = lanes.get("consistency_attempts", 0) + 1
         attempt["unclassified_count"] = _unclassified_failure_count(state, attempt)
         if attempt["status"] == "PASSED":
-            state["pending_action"] = "review:cursor" if attempt["backend"] == "gpt" else f"handoff:{state['current_stage'].removeprefix('flow-')}"
+            if attempt["backend"] == "gpt":
+                state["pending_action"] = "review:cursor"
+            elif attempt["backend"] in {"cursor", "ibrain"}:
+                state["pending_action"] = "review:consistency"
+            else:
+                state["pending_action"] = f"handoff:{state['current_stage'].removeprefix('flow-')}"
         elif attempt["status"] == "FAILED":
+            lanes["repair_backend"] = attempt["backend"]
             state["pending_action"] = f"revise:{state['current_stage'].removeprefix('flow-')}"
         elif attempt["unclassified_count"] >= UNCLASSIFIED_LIMIT:
             state["pending_action"] = "blocked:review:unclassified"

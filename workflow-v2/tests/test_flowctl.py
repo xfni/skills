@@ -827,7 +827,7 @@ class ReviewAndHandoffTests(unittest.TestCase):
                 with self.assertRaisesRegex(FlowctlError, "HANDOFF_SCHEMA_INVALID"):
                     accept_handoff(state_path, path, state["state_revision"])
 
-    def test_cursor_review_requires_gpt_and_two_runtime_failures_degrade(self):
+    def test_cursor_review_requires_gpt_and_two_runtime_failures_fall_back_to_ibrain(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             state_path = self._state_with_spec(root)
@@ -855,6 +855,53 @@ class ReviewAndHandoffTests(unittest.TestCase):
                     state_path, "cursor", "flow-spec", "spec:M1", "cursor", "high",
                     result["state_revision"],
                 )
+            fallback = begin_review(
+                state_path, "ibrain", "flow-spec", "spec:M1", "glm-5.3", "medium",
+                result["state_revision"],
+            )
+            fallback_report = root / "ibrain.json"
+            fallback_report.write_text(json.dumps({
+                "status": "FAILED",
+                "findings": [{"id": "GLM-1", "severity": "HIGH", "summary": "fix fallback finding",
+                              "blocking_status": "BLOCKING", "recurrence_key": "fallback", "evidence": "spec"}],
+                "reviewed_digest": fallback["artifact_digest"],
+            }))
+            result = submit_review(
+                state_path, fallback["attempt_id"], fallback_report,
+                fallback["state_revision"], controller_executed=True,
+            )
+            current = load_state(state_path)["artifacts"]
+            revised_path, _ = write_artifact(
+                root, "spec", revision=2, milestone="M1",
+                upstream={name: current[name] for name in ("requirement", "intent", "roadmap")},
+                name="spec_fallback_2.md",
+            )
+            revised = register_artifact(state_path, revised_path, "spec", "M1", result["state_revision"])
+            fallback = begin_review(
+                state_path, "ibrain", "flow-spec", "spec:M1", "glm-5.3", "medium",
+                revised["state_revision"],
+            )
+            fallback_report = root / "ibrain-pass.json"
+            fallback_report.write_text(json.dumps({
+                "status": "PASSED", "findings": [], "reviewed_digest": fallback["artifact_digest"],
+            }))
+            result = submit_review(
+                state_path, fallback["attempt_id"], fallback_report,
+                fallback["state_revision"], controller_executed=True,
+            )
+            self.assertEqual("review:consistency", load_state(state_path)["pending_action"])
+            final = begin_review(
+                state_path, "consistency", "flow-spec", "spec:M1",
+                "gpt-6-astra", "medium", result["state_revision"],
+            )
+            final_report = root / "consistency.json"
+            final_report.write_text(json.dumps({
+                "status": "PASSED", "findings": [],
+                "reviewed_digest": final["artifact_digest"],
+            }))
+            result = submit_review(
+                state_path, final["attempt_id"], final_report, final["state_revision"],
+            )
             handoff = root / "handoff.json"
             handoff.write_text(json.dumps({
                 "schema_version": 1, "signal": "FLOW_RUN_HANDOFF", "issue_id": "BCS-710",
@@ -863,7 +910,75 @@ class ReviewAndHandoffTests(unittest.TestCase):
             }))
             accepted = accept_handoff(state_path, handoff, result["state_revision"])
             self.assertEqual("flow-plan", accepted["current_stage"])
-            self.assertEqual("COMPLETE_WITH_DEFECT", accepted["completion_quality"])
+            self.assertEqual("COMPLETE", accepted["completion_quality"])
+
+    def test_review_lanes_close_own_findings_then_astra_checks_final_digest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            state_path = self._state_with_spec(root)
+            state = load_state(state_path)
+
+            gpt = begin_review(state_path, "gpt", "flow-spec", "spec:M1", "gpt-5.6-sol", "high", state["state_revision"])
+            report = root / "gpt-pass.json"
+            report.write_text(json.dumps({"status": "PASSED", "findings": [], "reviewed_digest": gpt["artifact_digest"]}))
+            reviewed = submit_review(state_path, gpt["attempt_id"], report, gpt["state_revision"])
+
+            cursor = begin_review(state_path, "cursor", "flow-spec", "spec:M1", "grok-4.6", "high", reviewed["state_revision"])
+            report = root / "cursor-fail.json"
+            report.write_text(json.dumps({
+                "status": "FAILED", "reviewed_digest": cursor["artifact_digest"],
+                "findings": [{"id": "CUR-1", "severity": "HIGH", "summary": "fix boundary",
+                              "blocking_status": "BLOCKING", "recurrence_key": "boundary", "evidence": "spec"}],
+            }))
+            failed = submit_review(state_path, cursor["attempt_id"], report, cursor["state_revision"], controller_executed=True)
+
+            current = load_state(state_path)["artifacts"]
+            revised_path, _ = write_artifact(
+                root, "spec", revision=2, milestone="M1",
+                upstream={name: current[name] for name in ("requirement", "intent", "roadmap")},
+                name="spec_2.md",
+            )
+            revised = register_artifact(state_path, revised_path, "spec", "M1", failed["state_revision"])
+            cursor_retry = begin_review(
+                state_path, "cursor", "flow-spec", "spec:M1", "grok-4.6", "high",
+                revised["state_revision"],
+            )
+            self.assertEqual(2, cursor_retry["artifact_revision"])
+            report = root / "cursor-pass.json"
+            report.write_text(json.dumps({"status": "PASSED", "findings": [], "reviewed_digest": cursor_retry["artifact_digest"]}))
+            cursor_passed = submit_review(
+                state_path, cursor_retry["attempt_id"], report, cursor_retry["state_revision"], controller_executed=True,
+            )
+            self.assertEqual("review:consistency", load_state(state_path)["pending_action"])
+
+            with self.assertRaisesRegex(FlowctlError, "CONSISTENCY_MODEL_REQUIRED"):
+                begin_review(state_path, "consistency", "flow-spec", "spec:M1", "gpt-5.6-sol", "high", cursor_passed["state_revision"])
+            final = begin_review(
+                state_path, "consistency", "flow-spec", "spec:M1", "gpt-6-astra", "medium",
+                cursor_passed["state_revision"],
+            )
+            self.assertEqual(cursor_retry["artifact_digest"], final["artifact_digest"])
+            report = root / "consistency-fail.json"
+            report.write_text(json.dumps({
+                "status": "FAILED", "reviewed_digest": final["artifact_digest"],
+                "findings": [{"id": "FINAL-1", "severity": "HIGH", "summary": "cross-lane conflict",
+                              "blocking_status": "BLOCKING", "recurrence_key": "cross-lane", "evidence": "spec"}],
+            }))
+            failed_final = submit_review(state_path, final["attempt_id"], report, final["state_revision"])
+            current = load_state(state_path)["artifacts"]
+            revised_path, _ = write_artifact(
+                root, "spec", revision=3, milestone="M1",
+                upstream={name: current[name] for name in ("requirement", "intent", "roadmap")},
+                name="spec_3.md",
+            )
+            revised = register_artifact(state_path, revised_path, "spec", "M1", failed_final["state_revision"])
+            lane = load_state(state_path)["reviews"]["lanes"]["spec:M1"]
+            self.assertEqual(1, lane["consistency_attempts"])
+            with self.assertRaisesRegex(FlowctlError, "GPT_REVIEW_REQUIRED"):
+                begin_review(
+                    state_path, "consistency", "flow-spec", "spec:M1", "gpt-6-astra", "medium",
+                    revised["state_revision"],
+                )
 
     def test_route_back_is_schema_bound_and_invalidates_from_owner_stage(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1105,14 +1220,27 @@ class EndToEndControllerTests(unittest.TestCase):
                     )
                     cursor = run_cursor_review(state_path, key, prompt, runner, "fake", "high", 5, reviewed["state_revision"])
                     self.assertEqual("PASSED", cursor["status"])
+                    consistency = begin_review(
+                        state_path, "consistency", f"flow-{kind}", key,
+                        "gpt-6-astra", "medium", cursor["state_revision"],
+                    )
+                    consistency_report = issue_dir / f"{kind}-{milestone}-consistency.json"
+                    consistency_report.write_text(json.dumps({
+                        "status": "PASSED", "findings": [],
+                        "reviewed_digest": consistency["artifact_digest"],
+                    }))
+                    final_review = submit_review(
+                        state_path, consistency["attempt_id"], consistency_report,
+                        consistency["state_revision"],
+                    )
                     if milestone == "M2" and kind == "code":
                         discovery = resume_flow("BCS-710", root)
-                        resumed = reconcile_resume(state_path, discovery, cursor["state_revision"])
+                        resumed = reconcile_resume(state_path, discovery, final_review["state_revision"])
                         self.assertEqual("flow-code", resumed["current_stage"])
                         self.assertEqual("M2", resumed["active_milestone"])
                         self.assertEqual("handoff:code", resumed["pending_action"])
-                        cursor["state_revision"] = resumed["state_revision"]
-                    result = handoff(kind, next_stage, key, cursor["state_revision"])
+                        final_review["state_revision"] = resumed["state_revision"]
+                    result = handoff(kind, next_stage, key, final_review["state_revision"])
                     state = load_state(state_path)
                     self.assertEqual(next_stage, result["current_stage"])
 

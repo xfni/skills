@@ -88,7 +88,7 @@ def _initialize_state_locked(path, issue_id, repo_root, branch, run_id=None):
         "current_stage": "flow-requirement",
         "pending_action": "produce:requirement",
         "artifacts": {},
-        "reviews": {"attempts": {}},
+        "reviews": {"attempts": {}, "lanes": {}},
         "snapshots": {},
         "coder_agent": {},
         "open_gaps": [],
@@ -449,6 +449,21 @@ def register_artifact(state_path, path, kind, milestone, expected_state_revision
             state["target_milestones"] = []
             state["milestones"] = {}
             state["active_milestone"] = None
+        lane = state.setdefault("reviews", {}).setdefault("lanes", {}).get(key, {})
+        repair_backend = lane.get("repair_backend")
+        if repair_backend in {"cursor", "ibrain"}:
+            preserved = {
+                "gpt": lane.get("gpt"),
+                "consistency_attempts": lane.get("consistency_attempts", 0),
+                "ibrain_activated": lane.get("ibrain_activated") if repair_backend == "ibrain" else None,
+            }
+            state["reviews"]["lanes"][key] = {name: value for name, value in preserved.items() if value is not None}
+        elif repair_backend == "consistency":
+            state["reviews"]["lanes"][key] = {
+                "consistency_attempts": lane.get("consistency_attempts", 0),
+            }
+        else:
+            state["reviews"]["lanes"].pop(key, None)
         invalidated_reviews = []
         for attempt_id, attempt in state["reviews"]["attempts"].items():
             if attempt.get("artifact_key") == key or attempt.get("artifact_key") in invalidated:
