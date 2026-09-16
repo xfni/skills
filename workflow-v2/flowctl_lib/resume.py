@@ -107,6 +107,12 @@ def resume_flow(issue_id, repo_root, inputs_path=None, controller=None):
             or Path(controller.get('worktree_path', '')).resolve() != Path(repo_root).resolve()):
         controller = {}
     candidates = _candidate_map(issue_id, repo_root, inputs_path)
+    for key, recorded in controller.get('artifacts', {}).items():
+        if inputs_path and (key in candidates or key.partition(':')[0] in candidates):
+            continue  # An explicit replacement for this key remains authoritative.
+        path = recorded.get('path')
+        if isinstance(path, str) and path not in candidates.setdefault(key, []):
+            candidates[key].append(path)
     parsed = []
     invalid = []
     for supplied_key, paths in candidates.items():
@@ -164,6 +170,27 @@ def resume_flow(issue_id, repo_root, inputs_path=None, controller=None):
         "valid_artifacts": valid,
         "invalid_candidates": invalid,
     }
+
+
+def _restore_current_code_gpt_lane(state):
+    """Rebuild a lost index from exact, revalidated receipts; no new review."""
+    from .reviews import has_passed_review
+    for key, artifact in state['artifacts'].items():
+        if artifact['type'] != 'code' or has_passed_review(state, key, 'gpt', artifact['digest']):
+            continue
+        attempts = [a for a in state['reviews']['attempts'].values()
+                    if a.get('artifact_key') == key and a.get('backend') == 'gpt'
+                    and a.get('artifact_digest') == artifact['digest'] and a.get('eligible')
+                    and a.get('invalidated_by') in {None, 'resume', key}]
+        if not attempts or any(a.get('status') == 'STARTED' for a in attempts):
+            continue
+        latest = max(attempts, key=lambda a: a.get('completed_state_revision', 0))
+        candidate = {'status': latest.get('status'), 'digest': artifact['digest'],
+                     'attempt_id': latest['attempt_id'], 'classification': latest.get('classification')}
+        probe = {**state, 'reviews': {**state['reviews'], 'lanes': {
+            key: {'gpt': candidate}}}}
+        if has_passed_review(probe, key, 'gpt', artifact['digest']):
+            state['reviews']['lanes'].setdefault(key, {})['gpt'] = candidate
 
 
 def reconcile_resume(state_path, discovery, expected_state_revision):
@@ -225,12 +252,14 @@ def reconcile_resume(state_path, discovery, expected_state_revision):
             carried = (attempt.get('backend') == 'gpt' and lane.get('carried_forward')
                        and lane.get('attempt_id') == attempt_id
                        and attempt.get('invalidated_by') == attempt.get('artifact_key'))
-            if not attempt["eligible"] and not carried:
+            if (not attempt["eligible"] and not carried
+                    and attempt.get('invalidated_by') in {None, 'resume', attempt.get('artifact_key')}):
                 attempt["invalidated_by"] = "resume"
             keep_reviews[attempt_id] = attempt
         state["artifacts"] = artifacts
         state["artifact_high_water"] = high_water_marks
         state["reviews"]["attempts"] = keep_reviews
+        _restore_current_code_gpt_lane(state)
         state["open_gaps"] = [
             gap for gap in state.get("open_gaps", [])
             if gap.get("type") != "PRODUCTION_REPLAY_GAP" or not gap.get("artifact_key")
