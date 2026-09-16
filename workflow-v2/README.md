@@ -62,7 +62,7 @@ flow-coder.toml
 
 Copy `skills/flow-code/agents/flow-coder.toml` to `~/.codex/agents/flow-coder.toml`. The coder is created lazily only after an approved Plan reaches `flow-code`, then the same session-scoped thread is reused for sequential `TASK-*` work; it is not started when a Codex session opens.
 
-Restart Codex after installing or changing custom Agent TOMLs. Spec, Plan, and Code require `cursor-review`, with `ibrain-review`/`glm-5.3` as its controller-selected runtime backup, plus `independent-review` and the final Astra consistency review. Other stages assume `pms-issue-reader`, `grilling`, `test-driven-development`, and `coding-guidelines` where stated; each skill defines its fallback or blocking behavior.
+Restart Codex after installing or changing custom Agent TOMLs. Spec, Plan, and Code use `cursor-review` by default, with `ibrain-review`/`glm-5.3` as the runtime backup or explicitly human-selected external lane, plus `independent-review` and the final Astra consistency review. Record a direct iBrain choice through `flowctl review select-external`; no Cursor attempt is required on that route. Other stages assume `pms-issue-reader`, `grilling`, `test-driven-development`, and `coding-guidelines` where stated; each skill defines its fallback or blocking behavior.
 
 All normal command results are JSON. Typical orchestration is `flowctl init`, `flowctl resume`, stage work, `flowctl artifact register`, review commands where required, and `flowctl handoff accept`. Always use the latest returned `state_revision` as the next mutation's `--expected-revision`.
 

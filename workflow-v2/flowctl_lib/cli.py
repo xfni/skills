@@ -12,7 +12,7 @@ from .authorizations import (
 from .errors import FlowctlError
 from .handoff import accept_handoff
 from .resume import reconcile_resume, resume_flow
-from .reviews import begin_review, repair_review_attempt, run_cursor_review, run_ibrain_review, submit_review
+from .reviews import begin_review, repair_review_attempt, run_cursor_review, run_ibrain_review, select_external_review, submit_review
 from .snapshot import record_snapshot
 from .signals import record_signal
 from .state import audit_state, initialize_state, read_consistent_state, record_runtime_goal, register_artifact, update_coder_state, validate_admission
@@ -59,6 +59,11 @@ def _parser():
 
     review = commands.add_parser("review")
     review_commands = review.add_subparsers(dest="review_command", required=True)
+    select = review_commands.add_parser('select-external', help='Record explicit human iBrain route for this run')
+    select.add_argument('--state', required=True)
+    select.add_argument('--backend', required=True, choices=('ibrain',))
+    select.add_argument('--reason', required=True)
+    select.add_argument('--expected-revision', required=True, type=int)
     begin = review_commands.add_parser("begin")
     for option, required in (("state", True), ("backend", True), ("stage", True), ("artifact-key", True), ("model", True), ("effort", True)):
         begin.add_argument(f"--{option}", required=required)
@@ -204,6 +209,9 @@ def _authorization_result(state, kind):
 
 
 def dispatch(args):
+    if args.command == 'review' and args.review_command == 'select-external':
+        _validate_command_admission(args.state)
+        return {'ok': True, 'state': select_external_review(args.state, args.backend, args.reason, args.expected_revision)}
     if args.command == "init":
         state_path = Path(args.state) if args.state else _default_state(args.repo, args.issue)
         state = initialize_state(state_path, args.issue, args.repo, args.branch, args.run_id)

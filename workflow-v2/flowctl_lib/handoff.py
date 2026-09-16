@@ -6,7 +6,7 @@ from .artifacts import read_artifact as verify_artifact
 from .errors import FlowctlError
 from .state import commit_state, locked_state, reject_if_paused
 from .snapshot import verify_recorded_snapshot
-from .reviews import _unique_object, reject_if_unclassified_exhausted, has_passed_review
+from .reviews import _unique_object, reject_if_unclassified_exhausted, has_passed_review, external_review_backends
 from .integration_results import (
     validate_integration_results_against_plan,
     validate_production_replay_gap,
@@ -128,6 +128,14 @@ def accept_handoff(state_path, handoff_path, expected_state_revision):
                 raise FlowctlError("GPT_REVIEW_REQUIRED")
             for backend in ("cursor", "ibrain"):
                 external = lanes.get(backend, {})
+                attempt = state['reviews']['attempts'].get(external.get('attempt_id'), {})
+                superseded = (backend == 'cursor' and state['reviews'].get('external_backend') == 'ibrain'
+                    and external.get('status') == 'INCOMPLETE'
+                    and attempt.get('classification') == 'REVIEW_RESULT'
+                    and not any(f.get('blocking_status') == 'BLOCKING' for f in attempt.get('findings', []))
+                    and has_passed_review(state, handoff['artifact_key'], 'ibrain', artifact['digest']))
+                if superseded:
+                    continue  # Retain the old receipt; the selected lane provides current assurance.
                 if external.get("digest") == artifact["digest"] and external.get("status") in {"FAILED", "INCOMPLETE"}:
                     code = "CURSOR_REVIEW_FAILED" if backend == "cursor" else "IBRAIN_REVIEW_FAILED"
                     raise FlowctlError(code)
@@ -144,7 +152,7 @@ def accept_handoff(state_path, handoff_path, expected_state_revision):
                 raise FlowctlError("EXTERNAL_REVIEW_IN_PROGRESS")
             external_pass = any(
                 has_passed_review(state, handoff['artifact_key'], name, artifact['digest'])
-                for name in ("cursor", "ibrain")
+                for name in external_review_backends(state)
             )
             if not external_pass:
                 cursor_failures = [

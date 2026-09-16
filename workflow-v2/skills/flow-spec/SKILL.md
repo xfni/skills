@@ -5,13 +5,13 @@ description: Use when the user explicitly requests a behavioral specification fo
 
 # Flow Spec
 
-Pass the controller-validated whole-view review binding to flowctl review cursor --binding-id (or mechanically eligible iBrain fallback). Legacy paths are hints only; never reconstruct a target-only package.
+Pass the controller-validated whole-view review binding to flowctl review cursor --binding-id or human-selected/fallback flowctl review ibrain --binding-id. Legacy paths are hints only; never reconstruct a target-only package.
 
 Read and enforce `../../flow-contract.md`; silently verify its issue, controller, worktree, and authorization bindings at stage entry.
 Read and follow `../../artifact-contract.md` for every artifact revision, digest, and approval operation.
 When `FLOW_RUN_CONTEXT` is present, also read and follow `../../orchestration-contract.md`; return its signal instead of a manual next-skill instruction.
 
-Read and enforce `../../flowctl-contract.md`. Run `flowctl status`, then `flowctl artifact register`. Execute the GPT Lane through `flowctl review begin` and `flowctl review submit`, the Cursor Lane through `flowctl review cursor` (or `flowctl review ibrain` only after controller-declared Cursor runtime exhaustion), and the final consistency review through controller review commands; finally use `flowctl handoff accept`. The skill must not edit the controller, self-count retries, or self-approve.
+Read and enforce `../../flowctl-contract.md`. Run `flowctl status`, then `flowctl artifact register`. Execute the GPT Lane through `flowctl review begin` and `flowctl review submit`, the external lane (Cursor Lane by default) through `flowctl review cursor` or `flowctl review ibrain` (human-selected or controller-declared fallback), and the final consistency review through controller review commands; finally use `flowctl handoff accept`. The skill must not edit the controller, self-count retries, or self-approve.
 
 In orchestrated mode, return the handoff payload unaccepted; the root alone calls `handoff accept` once. The command above is stage-owned only in Direct progression. Missing auxiliary metadata or historical documents never triggers human unlock.
 
@@ -19,11 +19,13 @@ Write the behavioral contract for one selected milestone. Define what the system
 
 **REQUIRED SUB-SKILL:** Use independent-review with the `design` profile for the GPT review.
 
-**REQUIRED SUB-SKILL:** Use cursor-review for the mandatory Cursor final review.
+**REQUIRED SUB-SKILL:** Use cursor-review for the default external review route.
 
-**REQUIRED SUB-SKILL:** Use ibrain-review with `glm-5.3` only as the controller-authorized Cursor runtime backup.
+**REQUIRED SUB-SKILL:** Use ibrain-review with `glm-5.3` as the controller-authorized Cursor backup or explicitly human-selected external lane.
 
 ## Admission
+
+An explicit human iBrain choice overrides the default Cursor route described below: record it through `flowctl review select-external` per `../../review-contract.md`, then run GPT -> iBrain -> fresh Astra consistency. Do not require Cursor calls/failures, re-ask external authorization, or clear valid GPT/test evidence. Resume follows the recorded selection; substantive findings and true host restrictions remain in force.
 
 Before external review, apply declared file/directory data exclusions through the manifest recipe in `../../review-contract.md`. Exclude embedded-sample files without deleting data, disclose missing coverage, repeat exclusions on retries/fallback, and continue; prohibited test-data transfer alone is not a human gate.
 

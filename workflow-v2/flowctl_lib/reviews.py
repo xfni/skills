@@ -86,6 +86,40 @@ def reject_if_unclassified_exhausted(state, artifact_key, artifact_digest):
         raise FlowctlError("UNCLASSIFIED_RETRY_EXHAUSTED", attempts=exhausted)
 
 
+def external_review_backends(state):
+    return ('ibrain',) if state.get('reviews', {}).get('external_backend') == 'ibrain' else ('cursor', 'ibrain')
+
+
+def select_external_review(state_path, backend, reason, expected_state_revision):
+    """Record a human-selected run route, never transport failure or approval."""
+    if backend != 'ibrain' or not isinstance(reason, str) or not reason.strip():
+        raise FlowctlError('INVALID_EXTERNAL_REVIEW_SELECTION')
+    with locked_state(state_path, expected_state_revision) as state:
+        reviews = state.setdefault('reviews', {})
+        if reviews.get('external_backend') == backend:
+            return state
+        if any(a.get('status') == 'STARTED' and _eligible(a)
+               for a in reviews.get('attempts', {}).values()):
+            raise FlowctlError('REVIEW_ATTEMPT_IN_PROGRESS')
+        reviews['external_backend'] = backend
+        reviews['external_backend_reason'] = reason.strip()
+        for key, lane in reviews.get('lanes', {}).items():
+            artifact = state.get('artifacts', {}).get(key)
+            if (artifact and state['current_stage'] == 'flow-' + artifact['type']
+                    and (not state.get('active_milestone')
+                         or artifact.get('milestone_id') == state['active_milestone'])):
+                consistency = lane.get('consistency')
+                if consistency and consistency.get('status') == 'PASSED':
+                    lane.pop('consistency')
+                    attempt = reviews['attempts'].get(consistency.get('attempt_id'))
+                    if attempt:
+                        attempt['eligible'] = False
+                        attempt['ineligibility_reason'] = 'EXTERNAL_ROUTE_CHANGED'
+                if state.get('pending_signal', {}).get('signal') not in {'FLOW_RUN_HUMAN_GATE', 'FLOW_RUN_BLOCKED'}:
+                    state['pending_action'] = next_review_action(state, key)
+        return commit_state(state_path, state, 'EXTERNAL_REVIEW_SELECTED', {'backend': backend, 'reason': reason.strip()})
+
+
 def begin_review(state_path, backend, stage, artifact_key, model, effort, expected_state_revision):
     if backend not in {"gpt", "cursor", "ibrain", "consistency"}:
         raise FlowctlError("INVALID_REVIEW_BACKEND")
@@ -117,6 +151,8 @@ def begin_review(state_path, backend, stage, artifact_key, model, effort, expect
             if lanes.get("gpt", {}).get("status") != "PASSED":
                 raise FlowctlError("GPT_REVIEW_REQUIRED")
         if backend == "cursor":
+            if state['reviews'].get('external_backend') == 'ibrain':
+                raise FlowctlError('EXTERNAL_BACKEND_SELECTED', backend='ibrain')
             runtime_failures = sum(
                 1 for item in state["reviews"]["attempts"].values()
                 if item.get("artifact_key") == artifact_key and item.get("backend") == "cursor"
@@ -129,7 +165,7 @@ def begin_review(state_path, backend, stage, artifact_key, model, effort, expect
             if model != "glm-5.3":
                 raise FlowctlError("IBRAIN_MODEL_REQUIRED")
             cursor_failures = _runtime_failure_count_for(state, artifact_key, "cursor", artifact["digest"])
-            if cursor_failures < 2 and not lanes.get("ibrain_activated"):
+            if cursor_failures < 2 and not lanes.get("ibrain_activated") and state['reviews'].get('external_backend') != 'ibrain':
                 raise FlowctlError("CURSOR_RETRY_REQUIRED", attempts=cursor_failures)
             if _runtime_failure_count_for(state, artifact_key, "ibrain", artifact["digest"]) >= 2:
                 raise FlowctlError("IBRAIN_RETRY_EXHAUSTED")
@@ -140,7 +176,7 @@ def begin_review(state_path, backend, stage, artifact_key, model, effort, expect
             external_pass = any(
                 lanes.get(name, {}).get("status") == "PASSED"
                 and lanes.get(name, {}).get("digest") == artifact["digest"]
-                for name in ("cursor", "ibrain")
+                for name in external_review_backends(state)
             )
             external_exhausted = (
                 (lanes.get('ibrain_activated') or
@@ -245,8 +281,9 @@ def next_review_action(state, artifact_key):
         return 'snapshot:capture'
     if not has_passed_review(state, artifact_key, 'gpt', digest):
         backend = 'gpt'
-    elif not any(has_passed_review(state, artifact_key, name, digest) for name in ('cursor', 'ibrain')):
-        if _runtime_failure_count_for(state, artifact_key, 'cursor', digest) >= 2 or lanes.get('ibrain_activated'):
+    elif not any(has_passed_review(state, artifact_key, name, digest) for name in external_review_backends(state)):
+        if (state['reviews'].get('external_backend') == 'ibrain'
+                or _runtime_failure_count_for(state, artifact_key, 'cursor', digest) >= 2 or lanes.get('ibrain_activated')):
             backend = 'ibrain' if _runtime_failure_count_for(state, artifact_key, 'ibrain', digest) < 2 else 'consistency'
         else:
             backend = 'cursor'

@@ -81,6 +81,8 @@ When the user supplies a sufficiently explicit requirement and explicitly wants 
 
 ## Run and resume
 
+If the human explicitly selected iBrain for this run, record `flowctl review select-external --backend ibrain` with the human instruction and current state revision per `../../review-contract.md`. Reuse that run selection across Spec/Plan/Code, retries and recovery: GPT -> iBrain glm-5.3 -> fresh Astra consistency. No Cursor call or failure count is required; do not ask for Cursor authorization or fake failures. Host restrictions, unresolved findings, fresh package/data exclusions and actual terminal receipts remain required. A historical route-only pause can be resumed with a bound signal after selection and safety verification, never by editing history.
+
 Known test datasets must not cause a data-transfer authorization stop: use the child review manifest's file/directory exclusions under `../../review-contract.md`, then continue automatically and disclose coverage limits. Keep current target evidence required and repeat exclusions for every fresh attempt/backend. Never send excluded data through the root brief instead.
 
 Controller validation errors are not automatically business `BLOCKED`. Missing current input or an unreadable conclusion returns to its owning Agent for repair. Metadata warnings, optional-field differences, historical annotations and redundant counts do not require human unlock. Use `FLOW_RUN_BLOCKED` only for an evidenced substantive or safety obstacle; report a broken controller/runner as a tool error, never as proof that the requirement is blocked. Do not silently turn an unknown review/test result into PASS.

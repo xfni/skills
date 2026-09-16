@@ -9,7 +9,7 @@ In orchestrated mode return the handoff payload unaccepted; the root alone calls
 
 Plan describes production-data test sources and runner methods without a replay manifest or adapter registry. Historical `replay_manifest_digest` metadata is advisory. A new Plan's `integration_scenarios` contract still requires complete downstream `integration_results`; omission is permitted only for an explicitly recognized legacy Plan checkpoint.
 
-Consume each controller-validated whole-view review binding using flowctl review cursor --binding-id or mechanically eligible flowctl review ibrain --binding-id. Legacy paths are hints only. Execution rechecks the complete filtered frozen worktree and current Git HEAD/index/source binding, never a root-selected file set.
+Consume each controller-validated whole-view review binding using flowctl review cursor --binding-id or human-selected/fallback flowctl review ibrain --binding-id. Legacy paths are hints only. Execution rechecks the complete filtered frozen worktree and current Git HEAD/index/source binding, never a root-selected file set.
 
 Read and enforce `../../flow-contract.md`; silently verify its issue, controller, worktree, and authorization bindings at stage entry.
 Read and follow `../../artifact-contract.md` for every artifact revision, digest, and approval operation.
@@ -21,11 +21,13 @@ Turn one approved spec.md into ordered, executable tasks. Plan how to implement 
 
 **REQUIRED SUB-SKILL:** Use independent-review with the `design` profile for the GPT review.
 
-**REQUIRED SUB-SKILL:** Use cursor-review for the mandatory Cursor final review.
+**REQUIRED SUB-SKILL:** Use cursor-review for the default external review route.
 
-**REQUIRED SUB-SKILL:** Use ibrain-review with `glm-5.3` only as Cursor's runtime backup.
+**REQUIRED SUB-SKILL:** Use ibrain-review with `glm-5.3` as Cursor's backup or the explicitly human-selected external lane.
 
 ## Admission
+
+An explicit human iBrain choice overrides the default Cursor route described below: record it through `flowctl review select-external` per `../../review-contract.md`, then run GPT -> iBrain -> fresh Astra consistency. Do not require Cursor calls/failures, re-ask external authorization, or clear valid GPT/test evidence. Resume follows the recorded selection; substantive findings and true host restrictions remain in force.
 
 Before external review, apply declared file/directory data exclusions through the manifest recipe in `../../review-contract.md`. Exclude embedded-sample files without deleting data, disclose missing coverage, repeat exclusions on retries/fallback, and continue; prohibited test-data transfer alone is not a human gate.
 
