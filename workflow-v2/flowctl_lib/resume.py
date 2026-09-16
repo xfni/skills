@@ -2,7 +2,7 @@ import json
 import copy
 from pathlib import Path
 
-from .artifacts import KINDS, read_artifact as verify_artifact
+from .artifacts import KINDS, read_artifact as verify_artifact, is_reviewable_artifact
 from .errors import FlowctlError
 from .integration_results import validate_integration_results_against_plan
 from .state import DEPENDENCIES, ORDER, artifact_key, commit_state, locked_state, validate_approval_authority
@@ -126,7 +126,7 @@ def resume_flow(issue_id, repo_root, inputs_path=None, controller=None):
         kind_candidates = [(key, item) for key, item in parsed if item["type"] == kind]
         for key, artifact in sorted(kind_candidates, key=lambda pair: pair[1]["revision"]):
             actual_key = artifact_key(kind, artifact.get("milestone_id"))
-            if not artifact["approval"]["valid"] or not _deps_satisfied(artifact, valid):
+            if not is_reviewable_artifact(artifact) or not _deps_satisfied(artifact, valid):
                 invalid.append({"path": artifact["path"], "code": "UNBOUND_ARTIFACT"})
                 continue
             if artifact["type"] == "integration" and not _integration_result_valid(artifact, valid):
@@ -211,16 +211,23 @@ def reconcile_resume(state_path, discovery, expected_state_revision):
         for artifact in artifacts.values():
             validate_approval_authority({**state, "artifacts": artifacts}, artifact)
         keep_reviews = {}
-        actual_snapshot = None
+        actual_snapshots = {}
         for attempt_id, attempt in state["reviews"]["attempts"].items():
             artifact = artifacts.get(attempt.get("artifact_key"))
             recorded = state.get("snapshots", {}).get(attempt.get("artifact_key"))
             if artifact and artifact["type"] == "code" and recorded:
-                if recorded and actual_snapshot is None:
-                    actual_snapshot = capture_snapshot(state["worktree_path"])
+                key = attempt['artifact_key']
+                if key not in actual_snapshots:
+                    actual_snapshots[key] = capture_snapshot(state['worktree_path'], artifact['path']
+                                                            if recorded.get('evidence_exclusion') else None)
+            actual_snapshot = actual_snapshots.get(attempt.get('artifact_key'))
             eligible = _review_eligible_after_resume(attempt, artifact, recorded, actual_snapshot)
             attempt["eligible"] = eligible
-            if not attempt["eligible"]:
+            lane = state.get('reviews', {}).get('lanes', {}).get(attempt.get('artifact_key'), {}).get('gpt', {})
+            carried = (attempt.get('backend') == 'gpt' and lane.get('carried_forward')
+                       and lane.get('attempt_id') == attempt_id
+                       and attempt.get('invalidated_by') == attempt.get('artifact_key'))
+            if not attempt["eligible"] and not carried:
                 attempt["invalidated_by"] = "resume"
             keep_reviews[attempt_id] = attempt
         state["artifacts"] = artifacts
@@ -267,17 +274,8 @@ def reconcile_resume(state_path, discovery, expected_state_revision):
                 else:
                     key = artifact_key(deepest["type"], milestone)
                     state["current_stage"] = f"flow-{deepest['type']}"
-                    passed_gpt = any(
-                        item.get("artifact_key") == key and item.get("backend") == "gpt"
-                        and item.get("status") == "PASSED" and item.get("classification") == "REVIEW_RESULT"
-                        and item.get("eligible", True) for item in keep_reviews.values()
-                    )
-                    passed_cursor = any(
-                        item.get("artifact_key") == key and item.get("backend") == "cursor"
-                        and item.get("status") == "PASSED" and item.get("classification") == "REVIEW_RESULT"
-                        and item.get("eligible", True) for item in keep_reviews.values()
-                    )
-                    state["pending_action"] = "review:gpt" if not passed_gpt else ("review:cursor" if not passed_cursor else f"handoff:{deepest['type']}")
+                    from .reviews import next_review_action
+                    state['pending_action'] = next_review_action(state, key)
             elif all(item["status"] == "completed" for item in state["milestones"].values()):
                 state["current_stage"] = "complete"
                 state["pending_action"] = None
@@ -300,7 +298,8 @@ def reconcile_resume(state_path, discovery, expected_state_revision):
                         state['target_milestones'] = [milestone]
                         state['milestones'] = {milestone: {'status': 'pending', 'dependencies': []}}
                         state['entry_stage'] = state['current_stage']
-                    state['pending_action'] = 'review:gpt'
+                    from .reviews import next_review_action
+                    state['pending_action'] = next_review_action(state, artifact_key(deepest['type'], state['active_milestone']))
                 else:
                     state["pending_action"] = f"handoff:{deepest['type']}"
         if pending_route_back:

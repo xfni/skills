@@ -27,6 +27,8 @@ Turn one approved spec.md into ordered, executable tasks. Plan how to implement 
 
 ## Admission
 
+Register the review candidate as `DRAFT` before dispatching reviews. Follow the reviewed-stage lifecycle in `../../flowctl-contract.md`: complete the selected lanes, then update only the APPROVAL envelope on `approve:plan`, register again, and hand off. Registration alone never means approval.
+
 Use the selected milestone, current Spec or explicitly supplied Plan/task boundary, and available context. Do not require all earlier documents or model-authored exact revision/digest tuples. Preserve inherited gaps without pausing. Required reviews are backed by actual controller receipts; missing history is disclosed, not fabricated.
 
 ### Direct invocation review scope

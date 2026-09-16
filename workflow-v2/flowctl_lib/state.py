@@ -8,7 +8,7 @@ from pathlib import Path
 import tempfile
 import re
 
-from .artifacts import verify_artifact, read_artifact
+from .artifacts import verify_artifact, read_artifact, is_reviewable_artifact
 from .errors import FlowctlError
 
 
@@ -446,7 +446,7 @@ def register_artifact(state_path, path, kind, milestone, expected_state_revision
                 attempted_stage=STAGE_BY_KIND[kind],
             )
         artifact = read_artifact(path, expected_type=kind, expected_issue=state["issue_id"], expected_milestone=milestone)
-        if not artifact["approval"]["valid"]:
+        if not is_reviewable_artifact(artifact):
             raise FlowctlError("APPROVAL_STALE", artifact=str(path))
         validate_upstream(state, artifact)
         validate_approval_authority(state, artifact)
@@ -472,7 +472,15 @@ def register_artifact(state_path, path, kind, milestone, expected_state_revision
             artifact['revision'] = max(artifact['revision'], tombstone['revision'] + 1)
         current = state["artifacts"].get(key)
         if current and all(current.get(field) == artifact.get(field) for field in ("path", "revision", "digest")):
-            return state
+            if current['approval'] == artifact['approval']:
+                return state
+            state['artifacts'][key] = artifact
+            if kind in {'spec', 'plan', 'code'} and STAGE_BY_KIND[kind] == state['current_stage']:
+                from .reviews import next_review_action
+                state['pending_action'] = next_review_action(state, key)
+            return commit_state(state_path, state, 'ARTIFACT_APPROVAL_UPDATED', {
+                'artifact_key': key, 'digest': artifact['digest'], 'status': artifact['approval']['status'],
+            })
         if current and artifact['digest'] != current['digest']:
             artifact['revision'] = max(artifact['revision'], current['revision'] + 1)
 
@@ -539,7 +547,11 @@ def register_artifact(state_path, path, kind, milestone, expected_state_revision
             }
             state["active_milestone"] = None
         state["current_stage"] = STAGE_BY_KIND[kind]
-        state["pending_action"] = "review:gpt" if kind in {"spec", "plan", "code"} else f"handoff:{kind}"
+        if kind in {'spec', 'plan', 'code'}:
+            from .reviews import next_review_action
+            state['pending_action'] = next_review_action(state, key)
+        else:
+            state['pending_action'] = f'handoff:{kind}'
         return commit_state(state_path, state, "ARTIFACT_REGISTERED", {
             "artifact_key": key, "revision": artifact["revision"], "digest": artifact["digest"],
             "invalidated_artifacts": invalidated, "invalidated_reviews": invalidated_reviews,

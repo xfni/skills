@@ -143,7 +143,8 @@ def begin_review(state_path, backend, stage, artifact_key, model, effort, expect
                 for name in ("cursor", "ibrain")
             )
             external_exhausted = (
-                _runtime_failure_count_for(state, artifact_key, "cursor", artifact["digest"]) >= 2
+                (lanes.get('ibrain_activated') or
+                 _runtime_failure_count_for(state, artifact_key, "cursor", artifact["digest"]) >= 2)
                 and _runtime_failure_count_for(state, artifact_key, "ibrain", artifact["digest"]) >= 2
             )
             if not external_pass and not external_exhausted:
@@ -154,8 +155,10 @@ def begin_review(state_path, backend, stage, artifact_key, model, effort, expect
         if (backend != "gpt" and latest_lane
                 and latest_lane.get("classification") == "REVIEW_RESULT"
                 and latest_lane.get("digest") == artifact["digest"]):
-            if latest_lane.get("status") in {"PASSED", "FAILED", "INCOMPLETE"}:
-                code = "REVIEW_ALREADY_PASSED" if latest_lane.get("status") == "PASSED" else "ARTIFACT_REVISION_REQUIRED"
+            latest_attempt = state['reviews']['attempts'].get(latest_lane.get('attempt_id'), {})
+            passed = has_passed_review(state, artifact_key, backend, artifact["digest"])
+            if passed or _requires_repair(latest_attempt):
+                code = "REVIEW_ALREADY_PASSED" if passed else "ARTIFACT_REVISION_REQUIRED"
                 raise FlowctlError(code)
         completed_cycles = sum(
             1 for item in state["reviews"]["attempts"].values()
@@ -213,6 +216,52 @@ def _unclassified_failure_count(state, attempt):
     )
 
 
+def _requires_repair(attempt):
+    return attempt.get('status') == 'FAILED' or (
+        attempt.get('status') == 'INCOMPLETE' and
+        any(finding.get('blocking_status') == 'BLOCKING' for finding in attempt.get('findings', [])))
+
+
+def next_review_action(state, artifact_key):
+    """One local review dependency order for registration, results and resume."""
+    artifact = state['artifacts'][artifact_key]
+    kind, digest = artifact['type'], artifact['digest']
+    lanes = state.get('reviews', {}).get('lanes', {}).get(artifact_key, {})
+    attempts = state.get('reviews', {}).get('attempts', {})
+    current = [a for a in attempts.values() if a.get('artifact_key') == artifact_key
+               and a.get('artifact_digest') == digest and _eligible(a)]
+    for attempt in current:
+        if attempt.get('status') == 'STARTED':
+            return f"review:{attempt['backend']}:await-result"
+    try:
+        reject_if_unclassified_exhausted(state, artifact_key, digest)
+    except FlowctlError:
+        return 'blocked:review:unclassified'
+    for backend in ('gpt', 'cursor', 'ibrain', 'consistency'):
+        lane = lanes.get(backend, {})
+        if lane.get('digest') == digest and _requires_repair(attempts.get(lane.get('attempt_id'), {})):
+            return 'revise:' + kind
+    if kind == 'code' and artifact_key not in state.get('snapshots', {}):
+        return 'snapshot:capture'
+    if not has_passed_review(state, artifact_key, 'gpt', digest):
+        backend = 'gpt'
+    elif not any(has_passed_review(state, artifact_key, name, digest) for name in ('cursor', 'ibrain')):
+        if _runtime_failure_count_for(state, artifact_key, 'cursor', digest) >= 2 or lanes.get('ibrain_activated'):
+            backend = 'ibrain' if _runtime_failure_count_for(state, artifact_key, 'ibrain', digest) < 2 else 'consistency'
+        else:
+            backend = 'cursor'
+    else:
+        backend = 'consistency'
+    if backend == 'consistency' and has_passed_review(state, artifact_key, backend, digest):
+        return ('handoff:' if artifact['approval']['valid'] else 'approve:') + kind
+    cycles = sum(a.get('artifact_key') == artifact_key and a.get('backend') == backend
+                 and a.get('classification') == 'REVIEW_RESULT' for a in attempts.values())
+    if cycles >= 3 or backend == 'consistency' and lanes.get('consistency_attempts', 0) >= 3:
+        return 'blocked:review:cycle-limit'
+    retry = any(a.get('backend') == backend and a.get('status') == 'INCOMPLETE' for a in current)
+    return f"review:{backend}" + (':retry' if retry else '')
+
+
 def record_process_result(state_path, attempt_id, exit_code, stdout, stderr, timed_out,
                           expected_state_revision, evidence_path,
                           forced_classification=None, forced_reason=None):
@@ -226,8 +275,9 @@ def record_process_result(state_path, attempt_id, exit_code, stdout, stderr, tim
         if not attempt:
             raise FlowctlError("REVIEW_ATTEMPT_NOT_FOUND")
         _validate_open_attempt(state, attempt)
-        if not (forced_classification == 'UNCLASSIFIED' and forced_reason in {
-                'REVIEW_WORKTREE_MUTATED', 'REVIEW_PACKAGE_DRIFT', 'REVIEW_PACKAGE_CLEANUP_FAILED'}):
+        # A terminal ambiguity cannot approve or degrade. Record it even when
+        # the guard that failed was snapshot validation; later attempts recheck.
+        if forced_classification != 'UNCLASSIFIED':
             _verify_attempt_snapshot(state, attempt)
         stdout, stderr = _sanitize(stdout), _sanitize(stderr)
         evidence = {
@@ -258,20 +308,7 @@ def record_process_result(state_path, attempt_id, exit_code, stdout, stderr, tim
         })
         attempt["retry_count"] = _runtime_failure_count(state, attempt)
         attempt["unclassified_count"] = _unclassified_failure_count(state, attempt)
-        if classification == "UNCLASSIFIED":
-            state["pending_action"] = (
-                "blocked:review:unclassified"
-                if attempt["unclassified_count"] >= UNCLASSIFIED_LIMIT
-                else f"review:{attempt['backend']}:retry"
-            )
-        elif attempt["retry_count"] < 2:
-            state["pending_action"] = f"review:{attempt['backend']}:retry"
-        elif attempt["backend"] == "cursor":
-            state["pending_action"] = "review:ibrain"
-        elif attempt["backend"] == "ibrain":
-            state["pending_action"] = "review:consistency"
-        else:
-            state["pending_action"] = f"handoff:{state['current_stage'].removeprefix('flow-')}:with-defect"
+        state["pending_action"] = next_review_action(state, attempt['artifact_key'])
         state = commit_state(state_path, state, "REVIEW_PROCESS_RECORDED", {
             "attempt_id": attempt_id, "classification": classification,
             "reason": reason, "retry_count": attempt["retry_count"],
@@ -509,6 +546,7 @@ def run_external_review(state_path, backend, artifact_key, prompt_path, runner_p
         raise FlowctlError('AUTHORIZATION_BINDING_STALE')
     package = create_review_package(state, **inputs)
     attempt = None
+    failure_reason = None
     try:
         if selected and selected['package_digest'] != package.digest:
             raise FlowctlError('REVIEW_PACKAGE_DRIFT')
@@ -545,19 +583,30 @@ def run_external_review(state_path, backend, artifact_key, prompt_path, runner_p
                 package.verify_source(state['worktree_path'])
             except FlowctlError as exc:
                 mutation_reason = exc.code
+    except (FlowctlError, OSError, ValueError) as exc:
+        if attempt is None:
+            raise
+        failure_reason = exc.code if isinstance(exc, FlowctlError) else 'BRIDGE_ERROR'
     finally:
         try:
             package.cleanup()
         except FlowctlError:
-            if attempt is not None:
-                record_process_result(
-                    state_path, attempt['attempt_id'], 2, '', '', False,
-                    attempt['state_revision'],
-                    Path(state_path).parent / 'reviews' / f"{attempt['attempt_id']}.json",
-                    forced_classification='UNCLASSIFIED',
-                    forced_reason='REVIEW_PACKAGE_CLEANUP_FAILED',
-                )
-            raise
+            if attempt is None:
+                raise
+            failure_reason = 'REVIEW_PACKAGE_CLEANUP_FAILED'
+    if failure_reason:
+        current = load_state(state_path)
+        recorded = current['reviews']['attempts'].get(attempt['attempt_id'], {})
+        if recorded.get('status') != 'STARTED' or not _eligible(recorded):
+            # Another controller mutation already resolved/invalidated it.
+            raise FlowctlError(failure_reason)
+        record_process_result(
+            state_path, attempt['attempt_id'], 2, '', '', False,
+            current['state_revision'],
+            Path(state_path).parent / 'reviews' / f"{attempt['attempt_id']}.json",
+            forced_classification='UNCLASSIFIED', forced_reason=failure_reason,
+        )
+        raise FlowctlError(failure_reason)
     if mutation_reason:
         return record_process_result(
             state_path, attempt['attempt_id'], exit_code, '', '', timed_out,
@@ -756,20 +805,9 @@ def submit_review(state_path, attempt_id, report_path, expected_state_revision, 
         if attempt["backend"] == "consistency":
             lanes["consistency_attempts"] = lanes.get("consistency_attempts", 0) + 1
         attempt["unclassified_count"] = _unclassified_failure_count(state, attempt)
-        if attempt["status"] == "PASSED":
-            if attempt["backend"] == "gpt":
-                state["pending_action"] = "review:cursor"
-            elif attempt["backend"] in {"cursor", "ibrain"}:
-                state["pending_action"] = "review:consistency"
-            else:
-                state["pending_action"] = f"handoff:{state['current_stage'].removeprefix('flow-')}"
-        elif attempt["status"] == "FAILED":
+        if _requires_repair(attempt):
             lanes["repair_backend"] = attempt["backend"]
-            state["pending_action"] = f"revise:{state['current_stage'].removeprefix('flow-')}"
-        elif attempt["unclassified_count"] >= UNCLASSIFIED_LIMIT:
-            state["pending_action"] = "blocked:review:unclassified"
-        else:
-            state["pending_action"] = f"review:{attempt['backend']}:retry"
+        state['pending_action'] = next_review_action(state, attempt['artifact_key'])
         state = commit_state(state_path, state, "REVIEW_RECORDED", {
             "attempt_id": attempt_id, "status": attempt["status"],
             "classification": attempt["classification"], "report_digest": attempt["report_digest"],

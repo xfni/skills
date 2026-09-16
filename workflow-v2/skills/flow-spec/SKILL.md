@@ -25,6 +25,8 @@ Write the behavioral contract for one selected milestone. Define what the system
 
 ## Admission
 
+Register the review candidate as `DRAFT` before dispatching reviews. Follow the reviewed-stage lifecycle in `../../flowctl-contract.md`: complete the selected lanes, then update only the APPROVAL envelope on `approve:spec`, register again, and hand off. Registration alone never means approval.
+
 Use the current issue/worktree, selected milestone and available delivery boundary. In normal orchestration, read Intent and Roadmap; at explicit arbitrary-node entry, use the supplied Spec/task boundary and disclose missing history. Controller-owned input bindings replace model-declared exact tuples. Resolve genuine product ambiguity, not missing historical metadata.
 
 ### Direct invocation review scope

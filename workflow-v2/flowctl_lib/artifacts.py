@@ -30,6 +30,13 @@ APPROVAL_BY_KIND = {
 }
 
 
+def is_reviewable_artifact(artifact):
+    """Draft ingestion is not approval; only reviewed stages have this path."""
+    return artifact['approval']['valid'] or (
+        artifact['type'] in {'spec', 'plan', 'code'}
+        and artifact['approval']['status'] == 'DRAFT')
+
+
 def _fields(text):
     result = {}
     for line in text.splitlines():

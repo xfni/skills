@@ -161,7 +161,8 @@ def accept_handoff(state_path, handoff_path, expected_state_revision):
                     and item.get("classification") in {"RUN_ERROR", "PROTOCOL_ERROR"}
                     and item.get("artifact_digest") == artifact["digest"] and item.get("eligible", True)
                 ]
-                if len(cursor_failures) < 2 or len(ibrain_failures) < 2:
+                fallback_active = state['reviews']['lanes'].get(handoff['artifact_key'], {}).get('ibrain_activated')
+                if (len(cursor_failures) < 2 and not fallback_active) or len(ibrain_failures) < 2:
                     raise FlowctlError("EXTERNAL_REVIEW_REQUIRED")
                 completion_quality = "COMPLETE_WITH_DEFECT"
                 state.setdefault("open_gaps", []).append({

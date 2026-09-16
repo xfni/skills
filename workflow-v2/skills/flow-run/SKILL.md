@@ -30,6 +30,8 @@ Read and enforce [the frozen worktree review contract](../../review-contract.md)
 
 ## Resolve the starting stage
 
+Use the controller's current `pending_action`, including iBrain, final consistency, `snapshot:capture`, and `approve:<kind>`; do not reset every reviewed-stage resume to GPT. Approval actions are downstream envelope updates, not new human gates: follow `../../flowctl-contract.md`, register unchanged BODY again, and continue automatically when the handoff action is returned.
+
 Resolve admission in this order:
 
 1. Obtain a human-provided issue ID from the current conversation or from a goal/controller whose issue was originally supplied by the human. The agent must not infer it from a branch name, directory, repository, document contents, or similar clues. If none exists, request it exactly once and stop before searching or starting a stage.

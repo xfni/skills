@@ -38,6 +38,8 @@ The three-region layout is a writing convention, not a daily progression gate. R
 
 A content change creates a new controller revision and invalidates affected review receipts and downstream artifacts, even when the model forgets to update `content_revision`. Moving unchanged content preserves its identity. An unchanged checkpoint explicitly invalidated by route-back cannot be reactivated merely by increasing a declared revision.
 
+Spec/Plan/Code review starts from a registered `DRAFT`, not from a fabricated approval. After required reviews, change the APPROVAL envelope only and register again; unchanged BODY retains its review identity. Draft admission never satisfies the approved-artifact handoff gate. See `flowctl-contract.md` for the controller's next-action lifecycle.
+
 Roadmap BODY includes exactly one JSON-array field `target_milestones` in delivery order and one JSON-object field `milestone_dependencies`, whose keys and dependency values are members of that array. These fields contain every non-deferred milestone required by Intent. Flowctl validates the graph, chooses the first dependency-ready milestone, records completion from accepted Integration evidence, and alone decides whether to return to Spec or complete the run.
 
 ## Authorization references

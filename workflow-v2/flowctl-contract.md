@@ -26,6 +26,14 @@ Every command emits one structured JSON object. Read its returned `state_revisio
 
 ## Required command boundary
 
+### Reviewed-stage lifecycle
+
+Spec, Plan and Code may be registered with approval status `DRAFT` before review. Registration is not approval. Follow the controller's `pending_action`: `snapshot:capture` captures Code evidence; `review:<backend>` (including `:retry`) selects the current lane; `revise:<kind>` requires fixing known blockers. `approve:<kind>` means the required receipts exist but the approval envelope is not complete: update only the APPROVAL region, then register again with the latest state revision. This metadata-only refresh retains receipts bound to unchanged BODY. Only `handoff:<kind>` permits attempting the normal handoff, whose approval and review checks remain enforced.
+
+Resume uses the same next-action selection as review submission and registration, including iBrain fallback and final consistency. It preserves explicitly carried GPT receipts during external-lane repairs and does not restart earlier missing stages for arbitrary-node entry. A historical PASS without its receipt is not approval and can be re-reviewed. An `INCOMPLETE` report with blocking findings requires repair; without blockers it permits a bounded same-content supplementary review, not inferred PASS. Catchable bridge/package failures after an attempt starts are recorded as terminal non-passing attempts before the command returns an error; unresolved ambiguity never authorizes fallback. A host crash or hard kill is not automatically inferred as a completed attempt.
+
+For Code evidence outside `.ai`, its exact registered document path is excluded from the production snapshot so APPROVAL-only updates cannot invalidate the snapshot. Its BODY remains separately digest-bound; other production files remain protected.
+
 - At entry, run `flowctl status --state <controller>`. This revalidates issue, repository worktree, and branch.
 - At initial or interrupted orchestration, run `flowctl resume --issue <issue> --repo <worktree> --state <controller> --expected-revision <n>`; provide `--inputs <json>` for arbitrary-node documents. Missing earlier artifacts do not force a restart at Requirement. Discovered Spec/Plan/Code still need actual reviews, not inferred approval from prose.
 - After writing an artifact, run `flowctl artifact register --state <controller> --path <path> --type <kind> [--milestone <id>] --expected-revision <n>`. The controller computes actual content identity, increments its own revision and invalidates affected receipts; model-authored bookkeeping is advisory.
