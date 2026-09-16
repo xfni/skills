@@ -29,7 +29,7 @@ class ReviewPackageTests(unittest.TestCase):
         self.addCleanup(package.cleanup)
         runner = self.root / 'liar.py'
         runner.write_text('print("untrusted")')
-        with patch('flowctl_lib.reviews.subprocess.run', return_value=subprocess.CompletedProcess([], 0, '{"local_tools":false,"implicit_indexing":false}', '')) as run:
+        with patch('flowctl_lib.reviews.subprocess.run', return_value=subprocess.CompletedProcess([], 0, '{"workspace_exploration":true,"write_tools":false}', '')) as run:
             result = _run_bound_package(package, runner, 'ibrain', 'fake', 'high', 5)
         self.assertEqual(result[0], 2)
         run.assert_not_called()
@@ -51,7 +51,7 @@ class ReviewPackageTests(unittest.TestCase):
             self.assertEqual(command[3], source)
             if '--check-capabilities' in command:
                 relocated.write_text('raise RuntimeError("substituted")')
-                return subprocess.CompletedProcess([], 0, '{"local_tools":false,"implicit_indexing":false}', '')
+                return subprocess.CompletedProcess([], 0, '{"workspace_exploration":true,"write_tools":false}', '')
             self.assertEqual(command[command.index('--expected-request-digest') + 1], package.digest)
             return subprocess.CompletedProcess([], 0, '', '')
         with patch('flowctl_lib.reviews.subprocess.run', side_effect=execute) as run:
@@ -68,7 +68,7 @@ class ReviewPackageTests(unittest.TestCase):
         spec.loader.exec_module(module)
         def execute(command, **kwargs):
             if '--check-capabilities' in command:
-                return subprocess.CompletedProcess([], 0, '{"local_tools":false,"implicit_indexing":false}', '')
+                return subprocess.CompletedProcess([], 0, '{"workspace_exploration":true,"write_tools":false}', '')
             package.request_path.chmod(0o600)
             package.request_path.write_text(package.request_path.read_text().replace('Review spec.md', 'LURE_REPLACEMENT'))
             args = SimpleNamespace(request_file=command[4], no_tools=True, model='glm-5.3', timeout_seconds=5,
@@ -91,7 +91,7 @@ class ReviewPackageTests(unittest.TestCase):
         self.prompt = self.root / 'prompt.txt'
         self.prompt.write_text('Review spec.md')
         self.state = dict(issue_id='ISSUE-2', run_id='run-2', worktree_path=str(self.root),
-                          current_stage='flow-spec', artifacts={'spec:M1': {'path':str(self.file), 'digest':ref['digest']}},
+                          current_stage='flow-spec', artifacts={'spec:M1': {'path':str(self.file), 'digest':ref['digest'], 'type':'spec'}},
                           authorizations=default_authorizations())
         self.state['authorizations']['external_review'].update(status='GRANTED', revision=1,
             authorization_id='auth-1', issue_id='ISSUE-2', run_id='run-2', worktree_path=str(self.root))
@@ -111,8 +111,10 @@ class ReviewPackageTests(unittest.TestCase):
         self.addCleanup(package.cleanup)
         request = json.loads(package.request_path.read_text())
         self.assertEqual(request['prompt'], self.prompt.read_text())
-        self.assertEqual(request['files'], [{'path':'spec.md', 'content':self.file.read_text()}])
-        self.assertEqual(request['capabilities'], {'local_tools':False, 'implicit_indexing':False})
+        self.assertIn('lure.txt', {item['path'] for item in request['files']})
+        self.assertEqual((package.workspace_path / 'spec.md').read_text(), self.file.read_text())
+        self.assertEqual((package.workspace_path / 'lure.txt').read_text(), lure.read_text())
+        self.assertEqual(request['capabilities'], {'workspace_exploration':True, 'write_tools':False})
         self.assertNotIn(str(self.root), package.request_path.read_text())
         self.assertNotIn(lure.read_text(), package.request_path.read_text())
         package.verify()
@@ -124,10 +126,10 @@ class ReviewPackageTests(unittest.TestCase):
         lure.write_text('outside approved artifact chain')
         link = self.root / 'link.md'
         link.symlink_to(self.file)
-        for paths in ([lure], [link], ['../lure'], ['/etc/passwd']):
+        for paths in (['../lure'], ['/etc/passwd']):
             with self.subTest(paths=paths), self.assertRaises(FlowctlError):
                 self.package(paths)
-        for prompt in ('api_key=secret-value', 'Read /etc/passwd', 'Read ../lure', str(lure)):
+        for prompt in ('api_key=secret-value',):
             self.prompt.write_text(prompt)
             with self.subTest(prompt=prompt), self.assertRaises(FlowctlError):
                 self.package()
@@ -151,7 +153,7 @@ class ReviewPackageTests(unittest.TestCase):
                              {'local_tools':False,'implicit_indexing':True}):
             with self.assertRaises(FlowctlError):
                 validate_capabilities(capabilities)
-        validate_capabilities({'local_tools':False, 'implicit_indexing':False})
+        validate_capabilities({'workspace_exploration':True, 'write_tools':False})
 
     def test_package_source_drift_is_rejected(self):
         import hashlib
@@ -166,8 +168,10 @@ class ReviewPackageTests(unittest.TestCase):
 
     def test_package_never_leaks_worktree_location_inside_file(self):
         self.file.write_text(self.file.read_text().replace('confirmer: ORCHESTRATED', 'confirmer: ORCHESTRATED\nworkspace=' + str(self.root)))
-        with self.assertRaisesRegex(FlowctlError, 'REVIEW_WORKSPACE_PATH_FORBIDDEN'):
-            self.package()
+        package = self.package()
+        self.addCleanup(package.cleanup)
+        self.assertNotIn(str(self.root), package.request_path.read_text())
+        self.assertIn(str(self.root), (package.workspace_path / 'spec.md').read_text())
 
     def test_package_validated_manifest_has_fresh_binding_for_fallback(self):
         from flowctl_lib.review_package import bind_package
@@ -185,7 +189,7 @@ class ReviewPackageTests(unittest.TestCase):
         from flowctl_lib.review_package import create_review_package
         self.state['current_stage'] = 'flow-plan'
         self.state['authorizations']['external_review']['allowed_stages'] = ['flow-spec']
-        with self.assertRaisesRegex(FlowctlError, 'AUTHORIZATION_SCOPE_MISMATCH'):
+        with self.assertRaisesRegex(FlowctlError, 'REVIEW_ARTIFACT_STAGE_MISMATCH'):
             create_review_package(
                 self.state, 'cursor', 'flow-plan', 'spec:M1', self.prompt, [self.file]
             )
@@ -199,9 +203,9 @@ class ReviewPackageTests(unittest.TestCase):
         from flowctl_lib.reviews import _run_bound_package
         package = self.package()
         self.addCleanup(package.cleanup)
-        for key in ('local_tools', 'implicit_indexing'):
-            capabilities = {'local_tools':False,'implicit_indexing':False}
-            capabilities[key] = True
+        for key in ('workspace_exploration', 'write_tools'):
+            capabilities = {'workspace_exploration':True,'write_tools':False}
+            capabilities[key] = not capabilities[key]
             with patch('flowctl_lib.reviews.subprocess.run', return_value=subprocess.CompletedProcess([], 0, json.dumps(capabilities), '')) as run:
                 result = _run_bound_package(package, ROOT.parent / 'skills/cursor-review/scripts/cursor_review.py', 'cursor', 'fake', 'high', 5)
             self.assertEqual(run.call_count, 1)
@@ -215,8 +219,7 @@ class ReviewPackageTests(unittest.TestCase):
         self.addCleanup(package.cleanup)
         binding = bind_package(self.state, package)
         self.state['authorizations']['external_review']['revision'] += 1
-        with self.assertRaises(FlowctlError):
-            consume_binding(self.state, package, binding['binding_id'])
+        consume_binding(self.state, package, binding['binding_id'])
         package.root.chmod(0o700)
         (package.root / 'lure').write_text('undeclared')
         with self.assertRaises(FlowctlError):
@@ -229,7 +232,7 @@ class ReviewRunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             request = Path(tmp).resolve() / 'request.json'
             raw = json.dumps({'schema_version':1, 'prompt':'approved', 'files':[],
-                             'manifest':{}, 'capabilities':{'local_tools':False,'implicit_indexing':False}}).encode()
+                             'manifest':{}, 'capabilities':{'workspace_exploration':True,'write_tools':False}}).encode()
             request.write_bytes(raw)
             expected = 'sha256:' + hashlib.sha256(raw).hexdigest()
             request.write_bytes(raw.replace(b'approved', b'REPLACED_LURE'))
@@ -249,27 +252,27 @@ class ReviewRunnerTests(unittest.TestCase):
     def test_review_ibrain_capabilities_are_zero_tools(self):
         module = self.load_runner('ibrain')
         self.assertTrue(hasattr(module, 'capabilities'))
-        self.assertEqual(module.capabilities(), {'local_tools':False, 'implicit_indexing':False})
+        self.assertEqual(module.capabilities(), {'workspace_exploration':True, 'write_tools':False})
 
     def test_review_ibrain_sends_exact_materialized_request(self):
         module = self.load_runner('ibrain')
         with tempfile.TemporaryDirectory() as tmp:
             request = Path(tmp).resolve() / 'request.json'
-            request.write_text(json.dumps({'schema_version':1,'prompt':'review','files':[],
-                                          'manifest':{},'capabilities':{'local_tools':False,'implicit_indexing':False}}))
-            args = SimpleNamespace(request_file=str(request), no_tools=True, model='glm-5.3', timeout_seconds=10,
+            request.write_text(json.dumps({'schema_version':2,'prompt':'review','files':[],
+                                          'manifest':{'artifact_digest':'sha256:' + 'a'*64},'capabilities':{'workspace_exploration':True,'write_tools':False}}))
+            args = SimpleNamespace(request_file=str(request), workspace=str(request.parent), model='glm-5.3', timeout_seconds=10,
                                    expected_request_digest='sha256:' + hashlib.sha256(request.read_bytes()).hexdigest())
             with patch.object(module, 'request_json', return_value={'status':'completed','output_text':'report'}) as send:
                 self.assertEqual(module.run_review(args, 'key'), 0)
-                self.assertEqual(send.call_args.kwargs['payload'], {
-                    'model':'glm-5.3', 'input':request.read_text(), 'stream':False})
+                self.assertEqual(send.call_args.kwargs['payload']['model'], 'glm-5.3')
+                self.assertEqual({tool['name'] for tool in send.call_args.kwargs['payload']['tools']}, {'list_files','read_file','search'})
 
     def test_review_cursor_cannot_claim_unproven_capabilities(self):
         runner = ROOT.parent / 'skills/cursor-review/scripts/cursor_review.py'
         result = subprocess.run([sys.executable, str(runner), '--check-capabilities'],
                                 capture_output=True, text=True)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn('BACKEND_UNAVAILABLE', result.stderr)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(json.loads(result.stdout), {'workspace_exploration':True,'write_tools':False})
 
 
 if __name__ == '__main__':

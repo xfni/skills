@@ -5,7 +5,9 @@ description: Use when the user explicitly requests implementation and unit testi
 
 # Flow Code
 
-Pass the validated review binding to `flowctl review cursor --binding-id` (or its authorized iBrain fallback). Explicitly include necessary implementation, tests, and evidence files in the manifest. Validation and execution require the recorded Code snapshot and the identical file set/source digests; drift or target-only substitution blocks egress.
+In orchestrated mode return the handoff payload unaccepted; the root alone calls `handoff accept` once. Stage-owned acceptance below applies only to Direct progression. Missing historical tuples or auxiliary report fields return to the owning Agent if needed, never a human unlock gate.
+
+Pass the controller-validated whole-view review binding to flowctl review cursor --binding-id (or mechanically eligible iBrain fallback). Legacy paths are hints only. Validation and execution require the recorded Code snapshot plus the complete filtered frozen worktree/source digests; drift or target-only substitution blocks egress.
 
 Read and enforce `../../flow-contract.md`; silently verify its issue, controller, worktree, and authorization bindings at stage entry.
 Read and follow `../../artifact-contract.md` when verifying artifact revisions, digests, and approvals.
@@ -27,11 +29,11 @@ Implement one approved plan.md with TDD and produce reviewable code plus unit-te
 
 ## Admission
 
-Require the complete `$flow-plan` handoff tuple: requirement, intent, roadmap, spec, and approved plan paths with approved revisions and SHA-256 digests, milestone ID, `TESTCASE-*`, and gaps. Propagate inherited `EXTERNAL_REVIEW_GAP` records without pausing orchestration. Recompute every canonical digest and verify snapshots, worktree, allowed change surface, commands, and prerequisites.
+Use the current Plan, milestone, worktree, allowed change surface and test commands. Required Plan review receipts must exist; all historical documents and model-declared exact tuples need not. Propagate inherited gaps without pausing and disclose missing history. Preserve protected files, permissions and the frozen code snapshot boundary.
 
-### Direct invocation authorization
+### Direct invocation review scope
 
-Without `FLOW_RUN_CONTEXT`, reuse a matching active `external_review` decision only when its persisted stage scope contains `flow-code`. Otherwise, immediately before the first required external operation, present one minimal stage-bound authorization gate for only `external_review` at `flow-code`; map grant or denial to the structured decision with `"allowed_stages":["flow-code"]`, record it through `flowctl authorization decide`, and use the controller-generated authorization ID and revision plus an operation manifest. It must not imply authority for another stage. A later decision or scope change uses `flowctl authorization amend`; prose cannot grant or expand authority.
+Read and enforce [the frozen worktree review contract](../../review-contract.md). Review the complete filtered frozen worktree with independent exploration of source, tests and secrets exclusions; the root brief is not sole evidence. iBrain is organization-trusted; no external-review authorization gate. Reviewer returns stdout/API only and never writes worktree. Freeze by digest (no automatic commit); source/private snapshot verification and single-use package binding are controller-owned.
 
 ## Coder lifecycle
 
@@ -67,13 +69,13 @@ After milestone validation, freeze the snapshot and run independent lanes. In th
 
 Apply independent-review's evidence audit and finding-weight convergence. A non-blocking finding must not trigger another review cycle; consolidate the same recurrence_key, and after three review cycles with the same unresolved blocker return to the owning stage or end `BLOCKED_REVIEW` rather than continuing the reviewer loop.
 
-After GPT passes, the Cursor Lane reviews the same snapshot. The stage does not create review authority. Under `FLOW_RUN_CONTEXT`, consume the same active `external_review` authorization ID and revision used by Spec, Plan, and the run; direct invocation uses its stage-bound equivalent. For every attempt obtain a fresh controller-validated operation manifest that is single-use and bound to `flow-code`, the selected backend, exact prompt, frozen snapshot, and transmitted paths. The operation manifest must remain inside the authorization's issue, run, worktree, stages, backends, and exclusions; the stage must not re-prompt while that scope remains valid. Exclude secrets, credentials, raw production data, unrelated content, and every other recorded exclusion. A pending, denied, invalidated, drifted, or expanded authorization/manifest ends `BLOCKED_REVIEW`; changed scope uses `flowctl authorization amend`. Cursor owns Cursor findings: send accepted fixes to the same coder, rerun affected validation, freeze a new snapshot, and return to Cursor without rerunning GPT.
+Cursor owns and rechecks its substantive findings; accepted fixes return to Cursor (or the same coder then Cursor) without rerunning the passed GPT Lane.
 
-Use controller-observed process facts rather than vendor error wording. Retry classified `RUN_ERROR` or `PROTOCOL_ERROR` exactly once and do not re-prompt; conflicting review signals remain `UNCLASSIFIED` and are not degradable, while findings are never fallback conditions. After the second retryable Cursor process failure invoke `$ibrain-review` with `glm-5.3`. For an iBrain fallback, reuse the same active `authorization_id` and revision and the same artifact snapshot, but create a `backend=ibrain` new controller-validated, single-use operation manifest/binding; it must not reuse the Cursor binding and must not re-prompt. iBrain owns and rechecks its findings and receives the same bounded retry behavior. Reopen a controller-executed legacy bridge failure only with audited `flowctl review repair-classification`; it never creates PASS. Findings from either backend never select the other backend.
+Use controller-observed process facts rather than vendor error wording. Retry classified `RUN_ERROR` or `PROTOCOL_ERROR` exactly once and do not re-prompt; conflicting review signals remain `UNCLASSIFIED` and are not degradable, while findings are never fallback conditions. After the second retryable Cursor process failure invoke `$ibrain-review` with `glm-5.3`. For iBrain fallback, create a fresh backend=ibrain package binding on the same artifact snapshot; no human authorization is needed. iBrain owns and rechecks its findings and receives the same bounded retry behavior. Reopen a controller-executed legacy bridge failure only with audited `flowctl review repair-classification`; it never creates PASS. Findings from either backend never select the other backend.
 
 After Cursor or iBrain passes, run a fresh `gpt-6-astra`/`medium` final consistency review with no inherited thread. It validates final digest, evidence, scope, and cross-lane resolution. A failure returns accepted fixes to the same coder, reopens necessary lanes, and reruns consistency, capped at three cycles; repeated no-delta blockers end `BLOCKED_REVIEW`. If both Cursor and iBrain exhaust retryable process failures, consistency must still pass before creating `EXTERNAL_REVIEW_GAP` and allowing `COMPLETE_WITH_DEFECT`. Carry the full `review_binding` and binding ID through every handoff and final completion report.
 
-Require each report to return a `review_binding` with stage `flow-code`, code_snapshot ID and content digests, approved upstream tuple, backend, exact model/effort, and terminal status. Recompute the snapshot and upstream digests immediately before dispatch and after receipt. A missing/mismatched binding or intervening drift invalidates the report and ends `BLOCKED_REVIEW`; never use a stale or unbound report.
+The controller binds the actual code snapshot and reviewer attempt and saves the terminal receipt. Reports need an explicit conclusion and problem summaries when failed; auxiliary fields and historical tuples are not gates. Snapshot/source mutation invalidates review. Repair format or bookkeeping issues through the owning Agent, not a human BLOCKED gate.
 
 Resolve the output path through the artifact contract with flow_step `code`, then write or update that document with task status, RED/GREEN evidence, unit-test evidence, changed files, commands and exit results, review findings/dispositions, deviations, and traceability to `TASK-*`, `RULE-*`, and `AC-*`.
 

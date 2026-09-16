@@ -2,15 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Flow v2 handoff",
   "type": "object",
-  "additionalProperties": false,
-  "dependentRequired": {
-    "completion_quality": ["open_gaps"],
-    "open_gaps": ["completion_quality"]
-  },
-  "allOf": [{
-    "if": {"anyOf": [{"required": ["completion_quality"]}, {"required": ["open_gaps"]}]},
-    "then": {"properties": {"from_stage": {"const": "flow-integration"}}}
-  }],
+  "additionalProperties": true,
   "required": ["schema_version", "signal", "issue_id", "run_id", "from_stage", "next_stage", "artifact_key"],
   "properties": {
     "schema_version": {"const": 1},
@@ -20,38 +12,7 @@
     "from_stage": {"enum": ["flow-requirement", "flow-intent", "flow-roadmap", "flow-spec", "flow-plan", "flow-code", "flow-integration"]},
     "next_stage": {"enum": ["auto", "flow-intent", "flow-roadmap", "flow-spec", "flow-plan", "flow-code", "flow-integration", "complete"]},
     "artifact_key": {"type": "string", "minLength": 1},
-    "completion_quality": {"enum": ["PASSED", "COMPLETE_WITH_DEFECT"]},
-    "open_gaps": {
-      "type": "array",
-      "items": {
-        "oneOf": [
-          {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["type", "scenario_ids", "missing_assurance", "reason", "owner", "remediation", "status", "plan_digest", "plan_revision"],
-            "properties": {
-              "type": {"const": "PRODUCTION_REPLAY_GAP"},
-              "scenario_ids": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
-              "missing_assurance": {"type": "string", "minLength": 1},
-              "reason": {"type": "string", "minLength": 1},
-              "owner": {"type": "string", "minLength": 1},
-              "remediation": {"type": "string", "minLength": 1},
-              "status": {"const": "OPEN"},
-              "plan_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
-              "plan_revision": {"type": "integer", "minimum": 1},
-              "artifact_key": {"type": "string", "minLength": 1}
-            }
-          },
-          {
-            "type": "object",
-            "required": ["type", "artifact_key"],
-            "properties": {
-              "type": {"const": "EXTERNAL_REVIEW_GAP"},
-              "artifact_key": {"type": "string", "minLength": 1}
-            }
-          }
-        ]
-      }
-    }
+    "completion_quality": {},
+    "open_gaps": {"description": "Advisory only; controller derives durable gaps from its own records."}
   }
 }

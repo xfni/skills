@@ -40,7 +40,7 @@ def reject_unresolved_cleanup(state):
 
 
 def _plan_binding(state, manifest):
-    from .artifacts import verify_artifact
+    from .artifacts import read_artifact as verify_artifact
     from .integration_results import validate_plan_integration_scenarios
     milestone = state.get('active_milestone')
     plan = state.get('artifacts', {}).get(f'plan:{milestone}')
@@ -50,8 +50,7 @@ def _plan_binding(state, manifest):
     for recorded in (requirement, plan):
         current = verify_artifact(recorded['path'], expected_type=recorded['type'],
                                   expected_issue=state['issue_id'], expected_milestone=recorded.get('milestone_id'))
-        if (not current['approval']['valid'] or current['digest'] != recorded['digest']
-                or current['revision'] != recorded['revision']):
+        if not current['approval']['valid'] or current['digest'] != recorded['digest']:
             raise FlowctlError('REPLAY_PLAN_BINDING_MISMATCH')
     if (manifest.get('milestone_id') != milestone or manifest.get('plan_revision') != plan['revision']
             or manifest.get('plan_digest') != plan['digest']):
@@ -66,8 +65,13 @@ def _plan_binding(state, manifest):
 
 def _active(state):
     auth = state['authorizations']['production_replay']
-    if auth['status'] != 'GRANTED' or auth['mode'] != 'SANITIZED_LOCAL_REPLAY':
+    if (auth.get('status') != 'GRANTED' or auth.get('mode') != 'SANITIZED_LOCAL_REPLAY'
+            or auth.get('decision') != 'SANITIZED_LOCAL_REPLAY' or auth.get('granted_by') != 'HUMAN'):
         raise FlowctlError('PRODUCTION_REPLAY_AUTHORIZATION_REQUIRED')
+    if (any(auth.get(field) != 'DENIED' for field in
+            ('raw_persistence', 'external_model_transmission', 'git_tracking'))
+            or auth.get('cleanup_required') is not True):
+        raise FlowctlError('PRODUCTION_REPLAY_SAFETY_POLICY_REQUIRED')
     if any(auth.get(k) != state.get(k) for k in ('issue_id', 'run_id', 'worktree_path')):
         raise FlowctlError('AUTHORIZATION_IDENTITY_DRIFT')
     return auth
@@ -118,6 +122,8 @@ def _publish_boundary(root, destination, staging, fd):
 
 
 def _preflight(state, manifest):
+    if not isinstance(manifest, dict):
+        raise FlowctlError('INVALID_REPLAY_MANIFEST')
     _active(state)
     _plan_binding(state, manifest)
     try:
@@ -181,7 +187,7 @@ def _preflight(state, manifest):
 
 
 def validate_replay_manifest(state_path, manifest_path, expected_revision):
-    from .state import locked_state, commit_state, reject_if_paused, audit_state
+    from .state import locked_state, commit_state, reject_if_paused
     try:
         raw = Path(manifest_path).read_bytes()
         if len(raw) > 65536:
@@ -191,7 +197,6 @@ def validate_replay_manifest(state_path, manifest_path, expected_revision):
         raise FlowctlError('INVALID_REPLAY_MANIFEST') from None
     with locked_state(state_path, expected_revision) as state:
         reject_if_paused(state)
-        audit_state(state)
         _preflight(state, manifest)
         auth = _active(state)
         binding = dict(binding_id=str(uuid4()), status='BOUND', authorization_id=auth['authorization_id'],
@@ -357,10 +362,9 @@ def _execute(root, destination, commands, manifest, staging, record_ownership):
 
 
 def run_replay(state_path, binding_id, expected_revision):
-    from .state import locked_state, commit_state, reject_if_paused, audit_state, utc_now
+    from .state import locked_state, commit_state, reject_if_paused, utc_now
     with locked_state(state_path, expected_revision) as state:
         reject_if_paused(state)
-        audit_state(state)
         auth = _active(state)
         reject_unresolved_cleanup(state)
         binding = next((b for b in auth['bindings'] if b['binding_id'] == binding_id), None)

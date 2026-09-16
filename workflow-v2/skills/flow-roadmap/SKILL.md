@@ -15,7 +15,7 @@ Turn confirmed product intent into ordered delivery milestones. Read both `requi
 
 ## Admission and authority
 
-Require matching issue IDs and paths plus approved revisions and SHA-256 digests for `requirement.md` and `intent.md`, both with `status: CONFIRMED`. Recompute both canonical digests and reject mismatch, drift, or missing confirmation. When the documents conflict, preserve the evidence conflict but follow intent; if the conflict would change Scope, Non-goals, Invariants, or Success Signals, stop and return to `$flow-intent` for a new revision.
+Use confirmed Intent and available Requirement context in the admitted issue/worktree. Controller-owned bindings replace model-declared exact revision/digest tuples; missing historical context is disclosed rather than fabricated or treated as a format blocker. Product confirmation remains necessary. Follow Intent on a documented conflict; changing Scope, Non-goals, Invariants or Success Signals returns to Intent for a real decision.
 
 Investigate relevant repository architecture, callers, tests, dependencies, and operational constraints. Investigation may change feasibility, sequencing, and estimates, never the confirmed product intent.
 

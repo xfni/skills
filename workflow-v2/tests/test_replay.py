@@ -30,6 +30,9 @@ class ReplayTests(unittest.TestCase):
         self.state = dict(issue_id='ISSUE-2', run_id='run-2', worktree_path=str(self.root),
                           state_revision=0, authorizations={'production_replay':dict(
                               status='GRANTED', mode='SANITIZED_LOCAL_REPLAY', authorization_id='auth',
+                              decision='SANITIZED_LOCAL_REPLAY', granted_by='HUMAN',
+                              raw_persistence='DENIED', external_model_transmission='DENIED',
+                              git_tracking='DENIED', cleanup_required=True,
                               revision=1, issue_id='ISSUE-2', run_id='run-2', worktree_path=str(self.root), bindings=[])})
         self.commands = {}
         self.set_command('acquisition', 'import sys\nsys.stdout.write("RAW_" + "PRIVATE_CUSTOMER_93841\\n")\n')

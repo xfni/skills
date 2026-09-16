@@ -39,10 +39,13 @@ class IbrainReviewTests(unittest.TestCase):
 
     def request_args(self, root):
         path = root.resolve() / "request.json"
-        path.write_text(json.dumps({"schema_version":1, "manifest":{}, "prompt":"review",
-            "files":[{"path":"spec.md","content":"approved"}],
-            "capabilities":{"local_tools":False,"implicit_indexing":False}}))
-        return SimpleNamespace(request_file=str(path), no_tools=True, model="glm-5.3", timeout_seconds=1,
+        workspace = root.resolve() / "workspace"
+        workspace.mkdir()
+        (workspace / "spec.md").write_text("approved")
+        path.write_text(json.dumps({"schema_version":2, "manifest":{"artifact_digest":"sha256:"+"a"*64}, "prompt":"review",
+            "files":[{"path":"spec.md","digest":"sha256:"+hashlib.sha256(b"approved").hexdigest()}],
+            "capabilities":{"workspace_exploration":True,"write_tools":False}}))
+        return SimpleNamespace(request_file=str(path), workspace=str(workspace), model="glm-5.3", timeout_seconds=1,
             expected_request_digest='sha256:' + hashlib.sha256(path.read_bytes()).hexdigest())
 
     def test_review_direct_responses_exact_input_auth_header_and_report_frame(self):
@@ -59,8 +62,10 @@ class IbrainReviewTests(unittest.TestCase):
             request = send.call_args.args[0]
             self.assertEqual(request.get_header("Authorization"), "Bearer secret-key")
             payload = json.loads(request.data)
-            self.assertEqual(payload, {"model":"glm-5.3", "stream":False,
-                                      "input":Path(args.request_file).read_text()})
+            self.assertEqual(payload["model"], "glm-5.3")
+            self.assertFalse(payload["stream"])
+            self.assertEqual({tool["name"] for tool in payload["tools"]}, {"list_files","read_file","search"})
+            self.assertIn("review", payload["input"][0]["content"])
             self.assertNotIn("secret-key", request.data.decode())
         self.assertEqual(output.getvalue(), "FLOW_REVIEW_REPORT_BEGIN\nreview-result\nFLOW_REVIEW_REPORT_END\n")
 
@@ -89,7 +94,7 @@ class IbrainReviewTests(unittest.TestCase):
         with contextlib.redirect_stdout(output), contextlib.redirect_stderr(error):
             self.assertFalse(runner.emit_report(raw))
         self.assertEqual(output.getvalue(), "")
-        self.assertIn('"code": "PROTOCOL_ERROR"', error.getvalue())
+        self.assertIn('"code": "CONFLICTING_TERMINAL_REPORT"', error.getvalue())
 
     def test_review_rejects_framed_report_with_prose_or_duplicate_json_keys(self):
         runner = load_runner()

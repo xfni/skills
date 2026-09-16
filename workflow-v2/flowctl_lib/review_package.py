@@ -1,4 +1,4 @@
-"""Materialized, single-use review input. No repository is a model workspace."""
+"""Single-use bindings for autonomous exploration of a frozen worktree."""
 import hashlib
 import json
 import os
@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from .errors import FlowctlError
 
-CAPABILITIES = {'local_tools': False, 'implicit_indexing': False}
+CAPABILITIES = {'workspace_exploration': True, 'write_tools': False}
 MAX_BYTES = 4 * 1024 * 1024
 
 
@@ -25,22 +25,18 @@ def canonical(value):
 
 
 def validate_capabilities(value):
-    if (not isinstance(value, dict) or set(value) != set(CAPABILITIES)
-            or any(value[key] is not False for key in CAPABILITIES)):
+    if (not isinstance(value, dict) or value != CAPABILITIES
+            or any(type(value.get(key)) is not bool for key in CAPABILITIES)):
         raise FlowctlError('BACKEND_UNAVAILABLE')
 
 
 def active_authorization(state, backend, stage):
-    auth = state['authorizations']['external_review']
-    if auth['status'] != 'GRANTED':
-        raise FlowctlError('EXTERNAL_REVIEW_AUTHORIZATION_REQUIRED')
-    if any(auth.get(key) != state.get(key) for key in ('issue_id', 'run_id', 'worktree_path')):
-        raise FlowctlError('AUTHORIZATION_IDENTITY_DRIFT')
-    if backend not in auth['allowed_backends'] or stage not in auth['allowed_stages']:
+    # Historical external-review decisions are not human gates.
+    if backend not in {'cursor', 'ibrain'} or stage not in {'flow-spec', 'flow-plan', 'flow-code'}:
         raise FlowctlError('AUTHORIZATION_SCOPE_MISMATCH')
     if stage != state['current_stage']:
         raise FlowctlError('STAGE_MISMATCH')
-    return auth
+    return state['authorizations']['external_review']
 
 
 def relative_path(root, path):
@@ -92,135 +88,106 @@ def check_content(raw, *, prompt=False):
         raise FlowctlError('REVIEW_INVALID_UTF8') from None
     if re.search(r'''(?ix)(?<![\w-])["']?(?:api[_-]?key|password|passwd|token|authorization|secret|access[_-]?token|client[_-]?secret)["']?\s*[:=]\s*\S+|Bearer\s+\S+|-----BEGIN\ .*PRIVATE\ KEY|raw[_\ -]production[_\ -]data''', value):
         raise FlowctlError('REVIEW_SENSITIVE_CONTENT')
-    if prompt and re.search(r'(?:^|\s)/(?:[^\s]+)|\.\./', value):
-        raise FlowctlError('REVIEW_PROMPT_PATH_ESCAPE')
+    # Paths in a brief are navigation text; read tools enforce the actual scope.
     return value
 
 
 class ReviewPackage:
-    def __init__(self, root, manifest, request_bytes):
+    def __init__(self, root, manifest, request_bytes, source_snapshot, controller_path):
         self.root = root
         self.manifest = manifest
         self.request_path = root / 'request.json'
+        self.workspace_path = root / 'workspace'
         self.digest = digest(request_bytes)
         self.outbound_prompt = json.loads(request_bytes)['prompt']
+        self.source_snapshot = source_snapshot
+        self.controller_path = controller_path
+        from .review_workspace import capture_review_snapshot
+        self.view_snapshot = capture_review_snapshot(self.workspace_path, git_facts=False)
 
     def verify(self):
-        if set(self.root.iterdir()) != {self.request_path}:
+        from .review_workspace import verify_review_snapshot
+        if set(self.root.iterdir()) != {self.request_path, self.workspace_path}:
             raise FlowctlError('REVIEW_PACKAGE_DRIFT')
-        raw = read_regular(self.root, Path('request.json'))
-        if digest(raw) != self.digest:
+        if digest(read_regular(self.root, Path('request.json'))) != self.digest:
             raise FlowctlError('REVIEW_PACKAGE_DRIFT')
+        verify_review_snapshot(self.workspace_path, None, self.view_snapshot, git_facts=False)
+
+    def verify_source(self, worktree):
+        from .review_workspace import verify_review_snapshot
+        return verify_review_snapshot(worktree, self.controller_path, self.source_snapshot)
 
     def cleanup(self):
         try:
             if self.root.exists():
-                self.root.chmod(0o700)
+                for parent, dirs, _ in os.walk(self.root, followlinks=False):
+                    Path(parent).chmod(0o700)
                 shutil.rmtree(self.root)
         except OSError:
             raise FlowctlError('REVIEW_PACKAGE_CLEANUP_FAILED') from None
 
 
-def create_review_package(state, backend, stage, artifact_key, prompt_path, paths):
-    auth = active_authorization(state, backend, stage)
-    root = Path(state['worktree_path'])
+def create_review_package(state, backend, stage, artifact_key, prompt_path, paths=None):
+    active_authorization(state, backend, stage)
+    root = Path(state['worktree_path']).resolve()
     artifact = state['artifacts'].get(artifact_key)
     if not artifact:
         raise FlowctlError('ARTIFACT_NOT_REGISTERED')
-    # Registered artifacts must belong to the upstream chain; other explicit
-    # paths are bounded source/test/evidence context, never a workspace grant.
-    allowed = {artifact_key}
-    pending = [artifact_key]
-    while pending:
-        current = state['artifacts'][pending.pop()]
-        for key, item in state['artifacts'].items():
-            ref = current.get('upstream', {}).get(item.get('type'))
-            if ref and ref.get('digest') == item['digest'] and key not in allowed:
-                allowed.add(key)
-                pending.append(key)
-    declared = {str(relative_path(root, state['artifacts'][key]['path'])): state['artifacts'][key]
-                for key in allowed}
+    if stage != 'flow-' + artifact['type']:
+        raise FlowctlError('REVIEW_ARTIFACT_STAGE_MISMATCH')
     prompt = check_content(read_regular(root, relative_path(root, prompt_path)), prompt=True)
-    files = []
-    hashes = []
-    seen = set()
-    total_bytes = len(prompt.encode('utf-8'))
-    if not isinstance(paths, list) or not paths or len(paths) > 100:
-        raise FlowctlError('INVALID_REVIEW_MANIFEST')
-    from .snapshot import _git, verify_recorded_snapshot
+    if paths is not None:
+        if not isinstance(paths, list) or not paths:
+            raise FlowctlError('INVALID_REVIEW_MANIFEST')
+        for path in paths:
+            relative_path(root, path)  # Hints never restrict the autonomous evidence scope.
+    from .review_workspace import capture_review_snapshot, create_review_view
+    from .artifacts import read_artifact as verify_artifact
+    from .snapshot import verify_recorded_snapshot
     if stage == 'flow-code':
-        source_snapshot = verify_recorded_snapshot(state, artifact_key)
-    else:
-        source_snapshot = {'head': _git(root, 'rev-parse', 'HEAD').strip(),
-                           'status_digest': digest(_git(root, 'status', '--short', '--untracked-files=all').encode())}
-    for path in paths:
-        rel = relative_path(root, path)
-        if str(rel) in seen:
-            raise FlowctlError('REVIEW_UNDECLARED_FILE')
-        ignored = subprocess.run(['git', '-C', str(root), 'check-ignore', '--quiet', '--', str(rel)],
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if ignored.returncode != 1:
-            raise FlowctlError('REVIEW_EXCLUDED_PATH')
-        if any(re.search(r'(?i)(credential|secret|private[_-]?key|id_rsa|\.pem$)', part) for part in rel.parts):
-            raise FlowctlError('REVIEW_EXCLUDED_PATH')
-        if str(rel) not in declared and any(str(relative_path(root, a['path'])) == str(rel) for a in state['artifacts'].values()):
-            raise FlowctlError('REVIEW_UNDECLARED_FILE')
-        seen.add(str(rel))
-        raw = read_regular(root, rel)
-        total_bytes += len(raw)
-        if total_bytes > MAX_BYTES:
-            raise FlowctlError('REVIEW_PACKAGE_TOO_LARGE')
-        content = check_content(raw)
-        artifact_hashes = {}
-        if str(rel) in declared:
-            expected = declared[str(rel)]['digest']
-            from .artifacts import _split_regions, INTEGRITY_BEGIN, INTEGRITY_END
-            body, integrity, approval = _split_regions(content)
-            if digest(body.encode('utf-8')) != expected:
-                raise FlowctlError('ARTIFACT_DRIFT')
-            artifact_hashes = {'artifact_digest': expected, 'approval_digest': digest(approval.encode())}
-            # Location metadata is local bookkeeping outside the approved body.
-            neutral = re.sub(r'(?m)^(\s*(?:[-*]\s*)?(?:resolved_path|path_source|path_rule):).*$', r'\1 [local metadata omitted]', integrity)
-            if any(Path(value.strip(' `')).is_absolute() for value in re.findall(r'(?m)^\s*(?:resolved_path|path_source|path_rule):\s*(.+)$', integrity)):
-                content = content.replace(INTEGRITY_BEGIN + '\n' + integrity + INTEGRITY_END,
-                                          INTEGRITY_BEGIN + '\n' + neutral + INTEGRITY_END)
-        if str(root) in content or str(root.resolve()) in content:
-            raise FlowctlError('REVIEW_WORKSPACE_PATH_FORBIDDEN')
-        files.append({'path': str(rel), 'content': content})
-        hashes.append({'path': str(rel), 'digest': digest(content.encode('utf-8')),
-                       'source_digest': digest(raw), **artifact_hashes})
-    if str(relative_path(root, artifact['path'])) not in seen:
-        raise FlowctlError('REVIEW_ARTIFACT_MISSING')
-    manifest = dict(backend=backend, stage=stage, artifact_key=artifact_key,
-                    artifact_digest=artifact['digest'], authorization_id=auth['authorization_id'],
-                    authorization_revision=auth['revision'], prompt_digest=digest(prompt.encode('utf-8')),
-                    files=hashes, source_snapshot=source_snapshot)
-    raw = canonical(dict(schema_version=1, manifest=manifest, prompt=prompt,
-                         files=files, capabilities=CAPABILITIES))
-    if len(raw) > MAX_BYTES:
-        raise FlowctlError('REVIEW_PACKAGE_TOO_LARGE')
+        verify_recorded_snapshot(state, artifact_key)
+    controller_path = state.get('controller_path')
+    source_snapshot = capture_review_snapshot(root, controller_path)
     package_root = Path(tempfile.mkdtemp(prefix='flow-review-')).resolve()
-    package = ReviewPackage(package_root, manifest, raw)
     try:
-        package.request_path.write_bytes(raw)
-        package.request_path.chmod(0o400)
-        package.root.chmod(0o500)
-    except OSError:
-        package.cleanup()
-        raise FlowctlError('REVIEW_PACKAGE_WRITE_FAILED') from None
-    return package
+        view = create_review_view(root, package_root / 'workspace', controller_path)
+        available = {item['path'] for item in view['files']}
+        # Historical context is available to the reviewer but only its target
+        # is mandatory. Missing/excluded history is not a package-wide gate.
+        required = {artifact_key}
+        for key in required:
+            item = state['artifacts'][key]
+            rel = str(relative_path(root, item['path']))
+            if rel not in available:
+                raise FlowctlError('REVIEW_REQUIRED_INPUT_EXCLUDED', path=rel)
+            current = verify_artifact(item['path'], expected_type=item['type'], expected_issue=state['issue_id'])
+            if current['digest'] != item['digest']:
+                raise FlowctlError('ARTIFACT_DRIFT')
+        manifest = dict(issue_id=state['issue_id'], run_id=state['run_id'],
+            worktree_binding=digest(str(root).encode()), backend=backend, stage=stage, artifact_key=artifact_key,
+            artifact_digest=artifact['digest'], authorization_id=None, authorization_revision=0,
+            authorization_basis='ORGANIZATION_TRUSTED' if backend == 'ibrain' else 'EXPLICIT_FLOW_INVOCATION',
+            prompt_digest=digest(prompt.encode()), files=view['files'], excluded=view['excluded'],
+            source_snapshot={key: value for key, value in source_snapshot.items() if key != 'files'})
+        raw = canonical(dict(schema_version=2, manifest=manifest, prompt=prompt,
+                             files=view['files'], capabilities=CAPABILITIES))
+        (package_root / 'request.json').write_bytes(raw)
+        (package_root / 'request.json').chmod(0o400)
+        package = ReviewPackage(package_root, manifest, raw, source_snapshot, controller_path)
+        package.verify_source(root)
+        return package
+    except BaseException:
+        shutil.rmtree(package_root)
+        raise
 
 
 def bind_package(state, package):
     manifest = package.manifest
     auth = active_authorization(state, manifest['backend'], manifest['stage'])
-    if (auth['authorization_id'] != manifest['authorization_id']
-            or auth['revision'] != manifest['authorization_revision']):
-        raise FlowctlError('AUTHORIZATION_BINDING_STALE')
     package.verify()
-    binding = dict(binding_id=str(uuid4()), authorization_id=auth['authorization_id'],
-                   authorization_revision=auth['revision'], package_digest=package.digest,
-                   backend=manifest['backend'], status='BOUND')
+    binding = dict(binding_id=str(uuid4()), authorization_id=None,
+        authorization_revision=0, authorization_basis=manifest['authorization_basis'],
+        package_digest=package.digest, backend=manifest['backend'], status='BOUND')
     auth['bindings'].append(binding)
     return binding
 
@@ -229,29 +196,27 @@ def consume_binding(state, package, binding_id):
     auth = active_authorization(state, package.manifest['backend'], package.manifest['stage'])
     binding = next((b for b in auth['bindings'] if b['binding_id'] == binding_id), None)
     if (not binding or binding['status'] != 'BOUND' or binding['package_digest'] != package.digest
-            or binding['authorization_id'] != auth['authorization_id']
-            or binding['authorization_revision'] != auth['revision']):
+            or binding.get('authorization_basis') != package.manifest['authorization_basis']):
         raise FlowctlError('AUTHORIZATION_BINDING_STALE')
     package.verify()
     binding['status'] = 'CONSUMED'
 
 
 def validate_review_manifest(state_path, manifest_path, expected_revision):
-    from .state import locked_state, commit_state, reject_if_paused, audit_state
+    from .state import locked_state, commit_state, reject_if_paused
     try:
         manifest = json.loads(Path(manifest_path).read_text(encoding='utf-8'))
-        if set(manifest) != {'backend', 'stage', 'artifact_key', 'prompt_path', 'paths'}:
+        required = {'backend', 'stage', 'artifact_key', 'prompt_path'}
+        if not required.issubset(manifest) or set(manifest) - required - {'paths'}:
             raise ValueError('invalid manifest')
     except (OSError, ValueError, TypeError):
         raise FlowctlError('INVALID_REVIEW_MANIFEST') from None
     with locked_state(state_path, expected_revision) as state:
         reject_if_paused(state)
-        audit_state(state)
         package = create_review_package(state, **manifest)
         try:
             binding = bind_package(state, package)
             binding['input_manifest'] = manifest
-            # The request is rematerialized and rehashed by review before consumption.
             result = dict(binding)
         finally:
             package.cleanup()

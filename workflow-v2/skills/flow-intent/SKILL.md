@@ -15,7 +15,7 @@ Read the human-authorized `requirement.md` and write the authoritative `intent.m
 
 ## Admission
 
-Require `requirement.md` with an issue, sources, content revision and digest, `status: READY_FOR_INTENT`, candidate directions, evidence, objections, and unknowns. Recompute and verify its canonical digest before use. A `DRAFT` or `BLOCKED` input returns to `$flow-requirement`. Preserve its immutable issue and conversation snapshots; never re-fetch PMS or rerun the agent swarm.
+Read the current issue-bound Requirement and its available sources, candidate directions, evidence, objections and unknowns. It must be ready for intent discussion; DRAFT or a real unresolved blocker returns to Requirement. Let the controller compute content identity; absent/stale declared digest or optional metadata is not a gate. Preserve available issue/conversation snapshots without inventing missing history; never re-fetch PMS or rerun the swarm merely to repair metadata.
 
 ## Residual ambiguity
 
@@ -44,7 +44,7 @@ The installed grilling path must produce equivalent records and must not turn mo
 
 When no intent-changing node remains, derive one normalized representation containing problem, target user and scenario, desired outcome, value, selected direction and rationale, Scope, Non-goals, Invariants, Success Signals, accepted product risks, Rejected Alternatives, and Remaining Unknowns. Do not surface it as an approval prompt under `FLOW_RUN_CONTEXT`.
 
-Require the exact Requirement revision/digest to carry the Flow-level human authorization. The worktree was admitted before artifact discovery; verify it again and return the Flow admission signal on mismatch. Never create or migrate a worktree in this stage.
+Require the Flow-level human product decision before autonomous downstream work; record it against controller-owned current content identity, not duplicate model-authored approval tuples. Verify the admitted worktree and issue silently. Never create or migrate a worktree in this stage.
 
 ## Write intent.md
 

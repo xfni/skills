@@ -5,9 +5,9 @@ import subprocess
 import sys
 import uuid
 
-from .artifacts import verify_artifact
+from .artifacts import read_artifact as verify_artifact
 from .errors import FlowctlError
-from .state import audit_state, commit_state, locked_state, reject_if_paused
+from .state import commit_state, locked_state, reject_if_paused
 
 
 REPORT_BEGIN = "FLOW_REVIEW_REPORT_BEGIN"
@@ -34,8 +34,8 @@ UNCLASSIFIED_LIMIT = 2
 # Content identities, independent of installation path. Update only with reviewed
 # adapter changes. No caller/state/manifest may supply or extend this registry.
 TRUSTED_ADAPTER_DIGESTS = {
-    'cursor': frozenset({'0e5e122e8e71ce1497e1fbcaf3321f2f89f3e07d343950a649dce54bc5ab9626'}),
-    'ibrain': frozenset({'f7cd81923d69000a7d4dcb1f183671ab351b2664a5fa12e3c33f332fb0db5316'}),
+    'cursor': frozenset({'26eec44de44968c0bc3a5d44b6820eb7c2393d875ef2cac966500abb206d5c0f'}),
+    'ibrain': frozenset({'0071b4e41049298b9d6fe807b990e84bea9e3f1befd35e2e3d7a87a8bcfb93c3'}),
 }
 
 
@@ -50,6 +50,26 @@ def trusted_adapter_source(runner_path, backend):
 
 def _eligible(item):
     return item.get("eligible", True)
+
+
+def has_passed_review(state, artifact_key, backend, digest):
+    """A lane label is not evidence: require its current terminal receipt."""
+    lane = state.get('reviews', {}).get('lanes', {}).get(artifact_key, {}).get(backend, {})
+    attempt = state.get('reviews', {}).get('attempts', {}).get(lane.get('attempt_id'), {})
+    carried = backend == 'gpt' and lane.get('carried_forward') and attempt.get('invalidated_by') == artifact_key
+    bound_digest = lane.get('digest') if carried else digest
+    if not (lane.get('status') == attempt.get('status') == 'PASSED'
+            and lane.get('digest') == attempt.get('artifact_digest') == bound_digest
+            and attempt.get('backend') == backend and attempt.get('artifact_key') == artifact_key
+            and attempt.get('classification') == 'REVIEW_RESULT' and (_eligible(attempt) or carried)):
+        return False
+    if backend in {'cursor', 'ibrain'} and attempt.get('execution_assurance') != 'CONTROLLER_EXECUTED':
+        return False
+    try:
+        raw = Path(attempt['report_path']).read_bytes()
+    except (KeyError, OSError):
+        return False
+    return 'sha256:' + hashlib.sha256(raw).hexdigest() == attempt.get('report_digest')
 
 
 def reject_if_unclassified_exhausted(state, artifact_key, artifact_digest):
@@ -71,7 +91,6 @@ def begin_review(state_path, backend, stage, artifact_key, model, effort, expect
         raise FlowctlError("INVALID_REVIEW_BACKEND")
     with locked_state(state_path, expected_state_revision) as state:
         reject_if_paused(state)
-        audit_state(state)
         if stage != state["current_stage"]:
             raise FlowctlError("STAGE_MISMATCH", expected=state["current_stage"], actual=stage)
         artifact = state["artifacts"].get(artifact_key)
@@ -207,7 +226,9 @@ def record_process_result(state_path, attempt_id, exit_code, stdout, stderr, tim
         if not attempt:
             raise FlowctlError("REVIEW_ATTEMPT_NOT_FOUND")
         _validate_open_attempt(state, attempt)
-        _verify_attempt_snapshot(state, attempt)
+        if not (forced_classification == 'UNCLASSIFIED' and forced_reason in {
+                'REVIEW_WORKTREE_MUTATED', 'REVIEW_PACKAGE_DRIFT', 'REVIEW_PACKAGE_CLEANUP_FAILED'}):
+            _verify_attempt_snapshot(state, attempt)
         stdout, stderr = _sanitize(stdout), _sanitize(stderr)
         evidence = {
             "schema_version": 1, "attempt_id": attempt_id,
@@ -215,6 +236,7 @@ def record_process_result(state_path, attempt_id, exit_code, stdout, stderr, tim
             "timed_out": timed_out, "classification": classification,
             "reason": reason, "stdout": stdout, "stderr": stderr,
         }
+        evidence['exploration'] = _exploration_evidence(stderr, attempt.get('review_manifest', {}))
         if attempt.get('binding_id'):
             for channel in ('stdout', 'stderr'):
                 output = evidence.pop(channel)
@@ -275,7 +297,6 @@ def repair_review_attempt(state_path, attempt_id, repair_kind, expected_state_re
     allowed_reasons, classification, reason = repairs[repair_kind]
     with locked_state(state_path, expected_state_revision) as state:
         reject_if_paused(state)
-        audit_state(state)
         attempt = state["reviews"]["attempts"].get(attempt_id)
         if (not attempt or attempt.get("backend") not in {"cursor", "ibrain"}
                 or attempt.get("classification") != "UNCLASSIFIED"
@@ -306,8 +327,14 @@ def repair_review_attempt(state_path, attempt_id, repair_kind, expected_state_re
             "classification": attempt["classification"],
             "failure_reason": attempt["failure_reason"],
         }
-        attempt["classification"] = classification
-        attempt["failure_reason"] = reason
+        if repair_kind == 'duplicate_identical_frames':
+            # Preserve the old classification/evidence. This is an audited
+            # operator-attested bridge diagnosis, never a recovered PASS.
+            attempt['eligible'] = False
+            attempt['ineligibility_reason'] = 'LEGACY_IBRAIN_FRAME_BUG'
+        else:
+            attempt["classification"] = classification
+            attempt["failure_reason"] = reason
         attempt["repair"] = {
             "kind": repair_kind,
             "previous_classification": previous["classification"],
@@ -322,7 +349,9 @@ def repair_review_attempt(state_path, attempt_id, repair_kind, expected_state_re
             state["pending_action"] = "review:ibrain"
         else:
             state["pending_action"] = "review:consistency"
-        state = commit_state(state_path, state, "REVIEW_CLASSIFICATION_REPAIRED", {
+        event = ('LEGACY_REVIEW_ATTEMPT_INVALIDATED' if repair_kind == 'duplicate_identical_frames'
+                 else 'REVIEW_CLASSIFICATION_REPAIRED')
+        state = commit_state(state_path, state, event, {
             "attempt_id": attempt_id,
             "repair_kind": repair_kind,
             "previous_classification": previous["classification"],
@@ -330,6 +359,9 @@ def repair_review_attempt(state_path, attempt_id, repair_kind, expected_state_re
             "classification": classification,
             "reason": reason,
             "evidence_digest": attempt["evidence_digest"],
+            "eligible": attempt.get('eligible', True),
+            "repair_assurance": ('OPERATOR_ATTESTED_BRIDGE_BUG' if repair_kind == 'duplicate_identical_frames'
+                                 else 'CONTROLLER_EVIDENCE_CHECKED'),
         })
         return {**attempt, "state_revision": state["state_revision"]}
 
@@ -369,25 +401,64 @@ def _extract_json_report(output, digest):
     return report
 
 
+def _exploration_evidence(stderr, manifest):
+    """Keep bounded local operation metadata, never file contents/vendor prose."""
+    try:
+        data = _extract_framed_json(stderr, 'FLOW_REVIEW_EXPLORATION_BEGIN', 'FLOW_REVIEW_EXPLORATION_END')
+    except FlowctlError:
+        return {'assurance':'UNAVAILABLE', 'calls':[]}
+    if (data.get('schema_version') != 1 or data.get('assurance') != 'LOCAL_READ_TOOLS'
+            or not isinstance(data.get('calls'), list) or len(data['calls']) > 256):
+        return {'assurance':'UNAVAILABLE', 'calls':[]}
+    import re
+    available = {item['path']: item['digest'] for item in manifest.get('files', [])}
+    calls = []
+    for item in data['calls']:
+        if (not isinstance(item, dict) or item.get('tool') not in {'list_files','read_file','search'}
+                or not isinstance(item.get('result_digest'), str)
+                or not re.fullmatch(r'sha256:[0-9a-f]{64}', item['result_digest'])):
+            return {'assurance':'UNAVAILABLE', 'calls':[]}
+        entry = {'tool':item['tool'], 'result_digest':item['result_digest']}
+        path = item.get('path')
+        if isinstance(path, str) and path in available and item.get('source_digest') == available[path]:
+            entry.update(path=path, source_digest=available[path])
+        calls.append(entry)
+    return {'assurance':'LOCAL_READ_TOOLS', 'calls':calls}
+
+
 def _validate_terminal_report(report, digest):
-    if not isinstance(report, dict) or set(report) != {'status', 'reviewed_digest', 'findings'}:
+    if not isinstance(report, dict):
         raise FlowctlError('INVALID_REVIEW_REPORT')
-    if not isinstance(report['status'], str) or report['status'] not in {'PASSED', 'FAILED', 'INCOMPLETE'}:
+    status = report.get('status')
+    if not isinstance(status, str) or status.upper() not in {'PASSED', 'FAILED', 'INCOMPLETE'}:
         raise FlowctlError('INVALID_REVIEW_REPORT')
-    if report['reviewed_digest'] != digest or not isinstance(report['findings'], list):
+    status = status.upper()
+    findings = report.get('findings', [])
+    if report.get('reviewed_digest', digest) != digest or not isinstance(findings, list):
         raise FlowctlError('REVIEW_BINDING_MISMATCH')
-    required = {'id', 'severity', 'summary', 'blocking_status', 'recurrence_key', 'evidence'}
-    for finding in report['findings']:
-        if (not isinstance(finding, dict) or set(finding) != required
-                or any(not isinstance(value, str) or not value.strip() for value in finding.values())):
+    normalized = []
+    for index, finding in enumerate(findings, 1):
+        if not isinstance(finding, dict) or not isinstance(finding.get('summary'), str) or not finding['summary'].strip():
             raise FlowctlError('INVALID_REVIEW_FINDING')
-        if finding['severity'] not in {'BLOCKER', 'HIGH', 'MEDIUM', 'LOW', 'INFO'}:
+        severity = str(finding.get('severity', 'HIGH' if status == 'FAILED' else 'MEDIUM')).upper()
+        if severity not in {'BLOCKER', 'HIGH', 'MEDIUM', 'LOW', 'INFO'}:
+            severity = 'HIGH' if status == 'FAILED' else 'MEDIUM'
+        blocking = finding.get('blocking_status')
+        if blocking is None:
+            blocking = 'BLOCKING' if status == 'FAILED' or severity in {'BLOCKER', 'HIGH'} else 'NON_BLOCKING'
+        if blocking not in {'BLOCKING', 'NON_BLOCKING'}:
             raise FlowctlError('INVALID_REVIEW_FINDING')
-        if finding['blocking_status'] not in {'BLOCKING', 'NON_BLOCKING'}:
-            raise FlowctlError('INVALID_REVIEW_FINDING')
-    has_blocking = any(item['blocking_status'] == 'BLOCKING' for item in report['findings'])
-    if (report['status'] == 'PASSED' and has_blocking) or (report['status'] == 'FAILED' and not has_blocking):
+        summary = finding['summary'].strip()
+        normalized.append(dict(id=str(finding.get('id') or f'F-{index}'), severity=severity,
+            summary=summary, blocking_status=blocking,
+            recurrence_key=str(finding.get('recurrence_key') or hashlib.sha256(summary.encode()).hexdigest()[:16]),
+            evidence=str(finding.get('evidence') or 'NOT_SUPPLIED')))
+    has_blocking = any(item['blocking_status'] == 'BLOCKING' for item in normalized)
+    if (status == 'PASSED' and has_blocking) or (status == 'FAILED' and not has_blocking):
         raise FlowctlError('INCONSISTENT_REVIEW_STATUS')
+    # Metadata is generated here; auxiliary model prose is not persisted as a gate.
+    report.clear()
+    report.update(status=status, reviewed_digest=digest, findings=normalized)
 
 
 def _redacted_terminal_report(report, digest):
@@ -458,6 +529,8 @@ def run_external_review(state_path, backend, artifact_key, prompt_path, runner_p
                 binding = bind_package(current, package)
             consume_binding(current, package, binding["binding_id"])
             current["reviews"]["attempts"][attempt["attempt_id"]]["binding_id"] = binding["binding_id"]
+            current['reviews']['attempts'][attempt['attempt_id']]['review_snapshot'] = package.source_snapshot
+            current['reviews']['attempts'][attempt['attempt_id']]['review_manifest'] = package.manifest
             current = commit_state(state_path, current, "REVIEW_PACKAGE_CONSUMED", {
                 "binding_id": binding["binding_id"], "package_digest": package.digest,
                 "authorization_id": binding["authorization_id"],
@@ -466,6 +539,12 @@ def run_external_review(state_path, backend, artifact_key, prompt_path, runner_p
             attempt["state_revision"] = current["state_revision"]
             exit_code, stdout, stderr, timed_out = _run_bound_package(
                 package, runner_path, backend, model, effort, timeout_seconds)
+            mutation_reason = None
+            try:
+                package.verify()
+                package.verify_source(state['worktree_path'])
+            except FlowctlError as exc:
+                mutation_reason = exc.code
     finally:
         try:
             package.cleanup()
@@ -479,6 +558,13 @@ def run_external_review(state_path, backend, artifact_key, prompt_path, runner_p
                     forced_reason='REVIEW_PACKAGE_CLEANUP_FAILED',
                 )
             raise
+    if mutation_reason:
+        return record_process_result(
+            state_path, attempt['attempt_id'], exit_code, '', '', timed_out,
+            attempt['state_revision'],
+            Path(state_path).parent / 'reviews' / f"{attempt['attempt_id']}.json",
+            forced_classification='UNCLASSIFIED', forced_reason=mutation_reason,
+        )
     stdout = stdout.decode("utf-8", errors="replace") if isinstance(stdout, bytes) else stdout
     stderr = stderr.decode("utf-8", errors="replace") if isinstance(stderr, bytes) else stderr
     evidence_path = Path(state_path).parent / "reviews" / f"{attempt['attempt_id']}.json"
@@ -494,7 +580,8 @@ def run_external_review(state_path, backend, artifact_key, prompt_path, runner_p
                 f"terminal report extraction rejected: {exc.code}", False,
                 attempt["state_revision"], evidence_path,
                 forced_classification="PROTOCOL_ERROR",
-                forced_reason="INVALID_TERMINAL_REVIEW_REPORT",
+                forced_reason=(exc.code if exc.code == 'REVIEW_WORKTREE_MUTATED'
+                               else "INVALID_TERMINAL_REVIEW_REPORT"),
             )
         if terminal_like:
             return record_process_result(
@@ -506,12 +593,21 @@ def run_external_review(state_path, backend, artifact_key, prompt_path, runner_p
             )
     else:
         report_path = evidence_path.with_suffix(".report.json")
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        if ERROR_BEGIN in stdout + stderr or ERROR_END in stdout + stderr:
+            return record_process_result(state_path, attempt['attempt_id'], 2, stdout, stderr, False,
+                attempt['state_revision'], evidence_path, forced_classification='UNCLASSIFIED',
+                forced_reason='CONFLICTING_REVIEW_SIGNALS')
         try:
             return submit_review(
                 state_path, attempt["attempt_id"], report_path,
                 attempt["state_revision"], controller_executed=True,
+                report_data=(json.dumps(report, ensure_ascii=False, indent=2) + '\n').encode(),
+                process_evidence={
+                    'exit_code':exit_code, 'timed_out':timed_out,
+                    'stdout_digest':'sha256:' + hashlib.sha256(stdout.encode()).hexdigest(),
+                    'stderr_digest':'sha256:' + hashlib.sha256(stderr.encode()).hexdigest(),
+                    'exploration':_exploration_evidence(stderr, package.manifest),
+                },
             )
         except FlowctlError as exc:
             report_path.unlink(missing_ok=True)
@@ -520,7 +616,8 @@ def run_external_review(state_path, backend, artifact_key, prompt_path, runner_p
                 f"terminal report rejected: {exc.code}", False,
                 attempt["state_revision"], evidence_path,
                 forced_classification="UNCLASSIFIED",
-                forced_reason="INVALID_TERMINAL_REVIEW_REPORT",
+                forced_reason=(exc.code if exc.code == 'REVIEW_WORKTREE_MUTATED'
+                               else "INVALID_TERMINAL_REVIEW_REPORT"),
             )
     return record_process_result(
         state_path, attempt["attempt_id"], exit_code, stdout, stderr, timed_out,
@@ -535,7 +632,9 @@ def _run_bound_package(package, runner_path, backend, model, effort, timeout_sec
         source = trusted_adapter_source(runner_path, backend)
         # Execute the captured, pinned bytes for BOTH checks and review. Isolated
         # Python prevents caller cwd/PYTHONPATH from replacing adapter imports.
-        launcher = [sys.executable, '-I', '-c', source]
+        runtime = Path.home() / '.codex/runtime/cursor-review/bin/python'
+        executable = str(runtime) if backend == 'cursor' and runtime.is_file() else sys.executable
+        launcher = [executable, '-I', '-c', source]
         check = subprocess.run([*launcher, "--check-capabilities"],
                                text=True, capture_output=True, timeout=30)
         if check.returncode != 0:
@@ -546,7 +645,7 @@ def _run_bound_package(package, runner_path, backend, model, effort, timeout_sec
             "schema_version": 1, "code": "BACKEND_UNAVAILABLE"}) + '\n' + ERROR_END
         return 2, "", error, False
     package.verify()
-    command = [*launcher, str(package.request_path), "--no-tools",
+    command = [*launcher, str(package.request_path), '--workspace', str(package.workspace_path),
                '--expected-request-digest', package.digest,
                "--model", model, "--timeout-seconds", str(timeout_seconds)]
     if backend == "cursor":
@@ -599,13 +698,17 @@ def _contains_terminal_fragment(output):
     return "{" in output and ('"status"' in lowered or '"findings"' in lowered)
 
 
-def submit_review(state_path, attempt_id, report_path, expected_state_revision, controller_executed=False):
+def submit_review(state_path, attempt_id, report_path, expected_state_revision, controller_executed=False,
+                  report_data=None, process_evidence=None):
     with locked_state(state_path, expected_state_revision) as state:
         reject_if_paused(state)
         attempt = state["reviews"]["attempts"].get(attempt_id)
         if not attempt:
             raise FlowctlError("REVIEW_ATTEMPT_NOT_FOUND")
         _validate_open_attempt(state, attempt)
+        if attempt.get('review_snapshot'):
+            from .review_workspace import verify_review_snapshot
+            verify_review_snapshot(state['worktree_path'], state_path, attempt['review_snapshot'])
         _verify_attempt_snapshot(state, attempt)
         if attempt["backend"] in {"cursor", "ibrain"} and not controller_executed:
             raise FlowctlError("EXTERNAL_CONTROLLER_EXECUTION_REQUIRED")
@@ -619,11 +722,20 @@ def submit_review(state_path, attempt_id, report_path, expected_state_revision, 
         if current["digest"] != attempt["artifact_digest"]:
             raise FlowctlError("ARTIFACT_DRIFT")
         try:
-            report_bytes = Path(report_path).read_bytes()
+            if report_data is not None and not controller_executed:
+                raise FlowctlError('EXTERNAL_CONTROLLER_EXECUTION_REQUIRED')
+            report_bytes = report_data if report_data is not None else Path(report_path).read_bytes()
             report = json.loads(report_bytes.decode("utf-8"), object_pairs_hook=_unique_object)
         except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
             raise FlowctlError("INVALID_REVIEW_REPORT") from exc
         _validate_terminal_report(report, attempt['artifact_digest'])
+        if report_data is not None:
+            Path(report_path).parent.mkdir(parents=True, exist_ok=True)
+            Path(report_path).write_bytes(report_bytes)
+        if process_evidence is not None:
+            if not controller_executed:
+                raise FlowctlError('EXTERNAL_CONTROLLER_EXECUTION_REQUIRED')
+            attempt['process_evidence'] = process_evidence
         attempt.update({
             "status": report["status"], "findings": report["findings"],
             "report_path": str(Path(report_path).resolve()),

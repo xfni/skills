@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import stat
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -21,8 +22,7 @@ MODELS_URL = "http://ibrain.qiyi.domain/v1/models"
 RESPONSES_BASE_URL = "http://ibrain.qiyi.domain/v1"
 RESPONSES_URL = f"{RESPONSES_BASE_URL}/responses"
 def capabilities():
-    # Direct HTTP has no local executor, workspace or implicit indexing.
-    return {"local_tools": False, "implicit_indexing": False}
+    return {"workspace_exploration": True, "write_tools": False}
 
 
 def emit_error(code, message):
@@ -69,7 +69,7 @@ def emit_report(report):
                 return False
             offset = end + len(REPORT_END)
         if stripped[offset:].strip() or any(value != values[0] for value in values[1:]):
-            emit_error("PROTOCOL_ERROR", "INCOMPLETE: conflicting terminal review reports.")
+            emit_error("CONFLICTING_TERMINAL_REPORT", "INCOMPLETE: conflicting terminal review reports.")
             return False
         report = json.dumps(values[0], ensure_ascii=False, separators=(",", ":"))
     print(REPORT_BEGIN, flush=True)
@@ -125,7 +125,7 @@ def discover_models(api_key, timeout):
 def parse_args():
     parser = argparse.ArgumentParser(description="Check iBrain or run one bounded read-only review.")
     parser.add_argument("request_file", nargs="?", help="Materialized JSON request")
-    parser.add_argument("--no-tools", action="store_true")
+    parser.add_argument("--workspace", help="Controller-frozen read-only review view")
     parser.add_argument("--expected-request-digest")
     parser.add_argument("--check-capabilities", action="store_true")
     parser.add_argument("--check", action="store_true", help="Check key, model discovery, and Responses API")
@@ -137,8 +137,8 @@ def parse_args():
     args = parser.parse_args()
     if args.timeout_seconds <= 0 or args.network_timeout_seconds <= 0:
         parser.error("timeouts must be positive")
-    if not (args.check or args.list_models or args.check_capabilities) and (not args.request_file or not args.no_tools or not args.expected_request_digest):
-        parser.error("request_file, --no-tools and --expected-request-digest are required")
+    if not (args.check or args.list_models or args.check_capabilities) and (not args.request_file or not args.workspace or not args.expected_request_digest):
+        parser.error("request_file, --workspace and --expected-request-digest are required")
     return args
 
 
@@ -183,35 +183,138 @@ def read_bound_request(path, expected_digest):
     return raw
 
 
+REVIEW_TOOLS = [
+    {"type":"function", "name":"list_files", "description":"List frozen project files, with pagination.",
+     "parameters":{"type":"object","properties":{"offset":{"type":"integer"}},"additionalProperties":False}},
+    {"type":"function", "name":"read_file", "description":"Read a frozen project file with line numbers.",
+     "parameters":{"type":"object","properties":{"path":{"type":"string"},"start_line":{"type":"integer"},
+                    "max_lines":{"type":"integer"}},"required":["path"],"additionalProperties":False}},
+    {"type":"function", "name":"search", "description":"Literal text search over frozen project files.",
+     "parameters":{"type":"object","properties":{"query":{"type":"string"}},"required":["query"],
+                   "additionalProperties":False}},
+]
+
+
+def read_frozen_file(workspace, files, path):
+    relative = Path(path)
+    if relative.is_absolute() or '..' in relative.parts:
+        raise ValueError('outside frozen workspace')
+    entry = next((item for item in files if item['path'] == str(relative)), None)
+    if entry is None:
+        raise ValueError('undeclared frozen file')
+    return read_bound_request(Path(workspace) / relative, entry['digest']).decode('utf-8')
+
+
+def explore_workspace(workspace, files, operation, arguments):
+    if operation == 'list_files':
+        offset = arguments.get('offset', 0)
+        if type(offset) is not int or offset < 0:
+            raise ValueError('invalid offset')
+        return {'files':[item['path'] for item in files[offset:offset + 500]],
+                'next_offset': offset + 500 if offset + 500 < len(files) else None}
+    if operation == 'read_file':
+        start, count = arguments.get('start_line', 1), arguments.get('max_lines', 200)
+        if type(start) is not int or type(count) is not int or start < 1 or not 1 <= count <= 500:
+            raise ValueError('invalid line range')
+        lines = read_frozen_file(workspace, files, arguments['path']).splitlines()
+        return {'path':arguments['path'], 'total_lines':len(lines),
+                'content':'\n'.join(f'{i + 1}: {lines[i]}' for i in range(start - 1, min(len(lines), start - 1 + count)))}
+    if operation == 'search':
+        query = arguments['query']
+        if not isinstance(query, str) or not query or len(query) > 500:
+            raise ValueError('invalid search')
+        matches = []
+        for item in files:
+            for number, line in enumerate(read_frozen_file(workspace, files, item['path']).splitlines(), 1):
+                if query in line:
+                    matches.append({'path':item['path'], 'line':number, 'text':line[:1000]})
+                    if len(matches) == 100:
+                        return {'matches':matches, 'truncated':True}
+        return {'matches':matches, 'truncated':False}
+    raise ValueError('unsupported operation')
+
+
 def run_review(args, api_key):
+    exploration = []
+    deadline = time.monotonic() + args.timeout_seconds
     try:
         raw = read_bound_request(args.request_file, args.expected_request_digest)
-        if not args.no_tools:
-            raise ValueError("invalid request")
-        materialized = raw.decode("utf-8")
-        request = json.loads(materialized)
+        request = json.loads(raw.decode('utf-8'))
         if (set(request) != {"schema_version", "manifest", "prompt", "files", "capabilities"}
-                or request["schema_version"] != 1
-                or request["capabilities"] != capabilities()):
+                or request["schema_version"] != 2 or request["capabilities"] != capabilities()):
             raise ValueError("invalid request")
-        response = request_json(RESPONSES_URL, api_key,
-            payload={"model": args.model, "input": materialized, "stream": False},
-            timeout=args.timeout_seconds)
-        if response.get("error") or response.get("status") != "completed":
-            raise ValueError("response incomplete")
-        report = response.get("output_text") or "".join(
-            part.get("text", "") for item in response.get("output", [])
-            if item.get("type") == "message"
-            for part in item.get("content", []) if part.get("type") == "output_text")
-        if not isinstance(report, str) or not report.strip():
-            raise ValueError("missing report")
+        workspace = Path(args.workspace).resolve(strict=True)
+        for item in request['files']:
+            read_frozen_file(workspace, request['files'], item['path'])
+    except (OSError, UnicodeError, ValueError, TypeError, KeyError, AttributeError):
+        emit_error('INVALID_LOCAL_INPUT', 'INCOMPLETE: invalid frozen review input.')
+        return 2
+    try:
+        instructions = (
+            "Perform an independent read-only review. Explore the frozen workspace with list_files, "
+            "read_file and search rather than trusting the root's summary. No writes, shell or external "
+            "reads are available. Inspect target, upstream artifacts, callers and tests as needed. "
+            "If evidence is insufficient, return a BLOCKING finding, never guess PASS. "
+            "Return exactly one JSON object with status PASSED/FAILED/INCOMPLETE, reviewed_digest, "
+            "and findings. Each finding has exactly id,severity,summary,blocking_status,recurrence_key,evidence. "
+            "PASSED cannot have blocking findings; FAILED requires blocking findings. "
+            "Do not emit report boundary markers. Reviewed digest: " + request['manifest']['artifact_digest'])
+        transcript = [{"role":"user","content":request['prompt'] + "\nREVIEW MANIFEST\n" +
+                       json.dumps(request['manifest'], ensure_ascii=False)}]
+        calls = 0
+        for _ in range(64):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError()
+            response = request_json(RESPONSES_URL, api_key,
+                payload={"model":args.model, "input":transcript, "instructions":instructions,
+                         "tools":REVIEW_TOOLS, "stream":False}, timeout=remaining)
+            if response.get("error") or response.get("status") != "completed":
+                emit_error("UNKNOWN_BACKEND_FAILURE", "INCOMPLETE: iBrain backend did not complete.")
+                return 2
+            output = response.get('output', [])
+            functions = [item for item in output if item.get('type') == 'function_call']
+            if functions:
+                transcript.extend(output)
+                for call in functions:
+                    calls += 1
+                    if calls > 256:
+                        emit_error("PROTOCOL_ERROR", "INCOMPLETE: exploration call limit exhausted.")
+                        return 2
+                    try:
+                        arguments = json.loads(call['arguments'])
+                        value = explore_workspace(workspace, request['files'], call['name'], arguments)
+                        result = json.dumps(value, ensure_ascii=False)
+                    except (ValueError, KeyError, TypeError):
+                        result = json.dumps({'error':'READ_ONLY_SCOPE_REJECTED'})
+                    metadata = {'tool':call.get('name'), 'call_id':call.get('call_id'),
+                        'result_digest':'sha256:' + hashlib.sha256(result.encode()).hexdigest()}
+                    if call.get('name') == 'read_file' and 'error' not in json.loads(result):
+                        entry = next(item for item in request['files'] if item['path'] == str(Path(arguments['path'])))
+                        metadata.update(path=entry['path'], source_digest=entry['digest'])
+                    exploration.append(metadata)
+                    transcript.append({'type':'function_call_output', 'call_id':call['call_id'], 'output':result})
+                continue
+            report = response.get("output_text") or "".join(
+                part.get("text", "") for item in output if item.get("type") == "message"
+                for part in item.get("content", []) if part.get("type") == "output_text")
+            if not isinstance(report, str) or not report.strip():
+                emit_error("PROTOCOL_ERROR", "INCOMPLETE: iBrain returned no terminal report.")
+                return 2
+            return 0 if emit_report(report) else 2
+        emit_error("PROTOCOL_ERROR", "INCOMPLETE: exploration round limit exhausted.")
+        return 2
     except TimeoutError:
         emit_error('PROCESS_TIMEOUT', 'INCOMPLETE: iBrain Responses request timed out.')
         return 2
     except (OSError, UnicodeError, ValueError, TypeError, KeyError):
-        emit_error("BACKEND_UNAVAILABLE", "INCOMPLETE: byte-only iBrain review unavailable.")
+        emit_error("UNKNOWN_BACKEND_FAILURE", "INCOMPLETE: iBrain review could not complete.")
         return 2
-    return 0 if emit_report(report) else 2
+    finally:
+        print('FLOW_REVIEW_EXPLORATION_BEGIN', file=sys.stderr)
+        print(json.dumps({'schema_version':1,'assurance':'LOCAL_READ_TOOLS',
+                          'calls':exploration}), file=sys.stderr)
+        print('FLOW_REVIEW_EXPLORATION_END', file=sys.stderr)
 
 
 def main():

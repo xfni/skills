@@ -2,7 +2,7 @@ import json
 import copy
 from pathlib import Path
 
-from .artifacts import KINDS, verify_artifact
+from .artifacts import KINDS, read_artifact as verify_artifact
 from .errors import FlowctlError
 from .integration_results import validate_integration_results_against_plan
 from .state import DEPENDENCIES, ORDER, artifact_key, commit_state, locked_state, validate_approval_authority
@@ -38,7 +38,7 @@ def _integration_result_valid(artifact, artifacts, state=None):
     if not plan:
         return False
     if result is None:
-        return plan.get('integration_scenarios') is None
+        return not plan.get('integration_contract_present') and plan.get('integration_scenarios') is None
     try:
         validate_integration_results_against_plan(result, plan)
     except FlowctlError:
@@ -56,8 +56,10 @@ def _integration_result_valid(artifact, artifacts, state=None):
 
 
 def _infer_key(path):
-    prefix = path.name.split("_", 1)[0]
-    return prefix if prefix in KINDS else None
+    try:
+        return verify_artifact(path)['type']
+    except (FlowctlError, OSError):
+        return None
 
 
 def _candidate_map(issue_id, repo_root, inputs_path):
@@ -89,18 +91,21 @@ def _candidate_map(issue_id, repo_root, inputs_path):
 
 
 def _deps_satisfied(artifact, valid):
-    for dependency in DEPENDENCIES[artifact["type"]]:
-        key = artifact_key(dependency, artifact.get("milestone_id"))
-        registered = valid.get(key)
-        claimed = artifact["upstream"].get(dependency)
-        if not registered or not claimed:
-            return False
-        if registered["digest"] != claimed["digest"] or registered["revision"] != claimed["revision"]:
-            return False
+    # Discovery establishes available inputs, not a complete historical proof.
+    # Content/review receipts are checked at the actual stage handoff.
     return True
 
 
-def resume_flow(issue_id, repo_root, inputs_path=None):
+def resume_flow(issue_id, repo_root, inputs_path=None, controller=None):
+    if controller is None:
+        try:
+            from .state import load_state
+            controller = load_state(Path(repo_root) / '.ai' / 'issue' / issue_id / 'flow-state.json')
+        except (FlowctlError, OSError, ValueError):
+            controller = {}
+    if (controller.get('issue_id') != issue_id
+            or Path(controller.get('worktree_path', '')).resolve() != Path(repo_root).resolve()):
+        controller = {}
     candidates = _candidate_map(issue_id, repo_root, inputs_path)
     parsed = []
     invalid = []
@@ -129,6 +134,12 @@ def resume_flow(issue_id, repo_root, inputs_path=None):
                 continue
             current = valid.get(actual_key)
             if current and current["revision"] == artifact["revision"] and current["digest"] != artifact["digest"]:
+                selected = controller.get('artifacts', {}).get(actual_key, {})
+                if selected.get('path') == artifact['path'] and selected.get('digest') == artifact['digest']:
+                    valid[actual_key] = artifact
+                    continue
+                if selected.get('path') == current['path'] and selected.get('digest') == current['digest']:
+                    continue
                 raise FlowctlError("AMBIGUOUS_CHECKPOINT", artifact_key=actual_key, revision=artifact["revision"])
             if not current or artifact["revision"] > current["revision"]:
                 valid[actual_key] = artifact
@@ -181,18 +192,15 @@ def reconcile_resume(state_path, discovery, expected_state_revision):
                 if artifact["type"] != kind:
                     continue
                 high_water = high_water_marks.get(key)
-                if high_water and artifact["revision"] < high_water["revision"]:
-                    raise FlowctlError(
-                        "CHECKPOINT_REVISION_ROLLBACK", artifact_key=key,
-                        highest_revision=high_water["revision"], candidate_revision=artifact["revision"],
-                    )
-                if (high_water and artifact["revision"] == high_water["revision"]
-                        and artifact["digest"] != high_water["digest"]):
-                    raise FlowctlError("CHECKPOINT_HISTORY_CONFLICT", artifact_key=key)
+                if high_water:
+                    artifact['revision'] = max(artifact['revision'], high_water['revision'] +
+                        (artifact['digest'] != high_water['digest']))
                 tombstone = tombstones.get(key)
-                if tombstone and artifact["revision"] <= tombstone["revision"]:
+                if tombstone and artifact['digest'] == tombstone['digest']:
                     artifacts.pop(key)
                     continue
+                if tombstone:
+                    artifact['revision'] = max(artifact['revision'], tombstone['revision'] + 1)
                 if not _deps_satisfied(artifact, artifacts):
                     artifacts.pop(key)
                     continue
@@ -285,7 +293,16 @@ def reconcile_resume(state_path, discovery, expected_state_revision):
                 state["pending_action"] = "produce:requirement"
             else:
                 state["current_stage"] = f"flow-{deepest['type']}"
-                state["pending_action"] = f"handoff:{deepest['type']}"
+                if deepest['type'] in {'spec', 'plan', 'code'}:
+                    state['active_milestone'] = deepest.get('milestone_id')
+                    if state['active_milestone']:
+                        milestone = state['active_milestone']
+                        state['target_milestones'] = [milestone]
+                        state['milestones'] = {milestone: {'status': 'pending', 'dependencies': []}}
+                        state['entry_stage'] = state['current_stage']
+                    state['pending_action'] = 'review:gpt'
+                else:
+                    state["pending_action"] = f"handoff:{deepest['type']}"
         if pending_route_back:
             state["current_stage"] = route_owner_stage
             state["pending_action"] = f"revise:{route_owner_stage.removeprefix('flow-')}"

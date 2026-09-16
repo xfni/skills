@@ -5,34 +5,36 @@ description: Use when the user or a workflow explicitly requests a bounded read-
 
 # iBrain Review
 
-Own one bounded, read-only review through the company iBrain Responses API. The caller owns review timing, scope, brief, finding disposition, and gate outcome.
+Own one bounded read-only review through the company iBrain Responses API. The caller owns profile, brief, findings and gate outcome.
 
-## Authorization and credentials
+## Trust, scope and credentials
 
-Sending code or documents to iBrain requires an active controller `external_review` authorization and controller-recorded Cursor runtime-fallback eligibility. Consume only its `authorization_id`, revision, and a controller-validated operation manifest for this exact iBrain request; invocation, prose, prompt wording, or a stage-created marker is not authorization. For an iBrain fallback, reuse the same active `authorization_id` and revision and the same artifact snapshot, but create a `backend=ibrain` new controller-validated, single-use operation manifest/binding; it must not reuse the Cursor binding. Continue without duplicate human confirmation only when the controller binding matches the issue, run, worktree, stage, iBrain backend, exact prompt, transmitted paths, and exclusions. A missing, pending, denied, invalidated, stale, consumed, drifted, expanded, or fallback-ineligible binding fails closed before review. Exclude anything outside that boundary or covered by sensitive-data exclusions.
+All iBrain models are organization-approved private deployments or confidentiality-bound trusted vendors. No human external-review authorization is required, and Cursor authorization never gates iBrain. Host sandbox/network permissions and sensitive-data exclusions still apply. Inside Flow, activation as Cursor backup still requires two controller-recorded retryable Cursor failures on the current artifact digest; findings never activate fallback.
 
-Read the API key from `~/.ibrain-review/API_KEY` by default. Never place it in a repository, prompt, command argument, report, or log. `--api-key-file` may select another protected file.
+Read ~/.ibrain-review/API_KEY by default; --api-key-file may select another protected file. Never put credentials in prompts, repositories, arguments or evidence.
 
-## Check and model discovery
+## Diagnostics and live model discovery
 
-Run `scripts/ibrain_review.py --check` before the first review. It verifies the credential, live model discovery, availability of default model `glm-5.3`, and a minimal Responses request. Use `--list-models` to print live IDs from `GET http://ibrain.qiyi.domain/v1/models`; never maintain a static model list.
+Use scripts/ibrain_review.py --list-models for live GET http://ibrain.qiyi.domain/v1/models; do not hard-code a model list. Default review model is glm-5.3. --check verifies credential, live availability and a minimal Responses request. Do not silently substitute a model.
 
-If a check fails, return its exact framed `INCOMPLETE` result. Do not substitute another model silently.
+## Frozen-worktree exploration
 
-## Run
-
-The controller supplies a private materialized JSON request containing the exact bound UTF-8 prompt, declared file content, relative input names, and digest manifest. Before transmission, `--check-capabilities` must report exactly `{"local_tools":false,"implicit_indexing":false}`:
+The controller creates a schema-version-2 request and complete filtered private worktree view. The root brief is background, not sole evidence; reviewer independently explores callers, contracts, tests and contradictions. Exclude secrets, credentials, raw production data, external paths, symlinks, caches/dependencies, binaries and oversized inputs. Required target/upstream artifacts must remain readable; record exclusions as coverage limits.
 
 ```bash
 python /path/to/ibrain-review/scripts/ibrain_review.py \
-  /private/package/request.json --no-tools \
+  /private/package/request.json --workspace /private/package/workspace \
   --expected-request-digest "$BOUND_REQUEST_DIGEST"
 ```
 
-The runner sends the materialized request directly to the Responses endpoint with model `glm-5.3`, no tools, no local executor, no workspace, no conversation continuation, and no implicit indexing. It never starts a Codex subprocess. Filesystem, shell, search, MCP and URL-fetch calls are unavailable. The credential is used only in the HTTP authorization header. The controller rehashes the private package before invocation, consumes its authorization binding once even on failure, and removes the package in `finally`; a cleanup failure cannot become success.
+--check-capabilities returns exactly {"workspace_exploration":true,"write_tools":false}. The pinned captured runner verifies request and every declared file digest before API calls. It exposes only bounded list_files, read_file and literal search function tools over the frozen view. Function outputs continue through Responses input; no shell, writes, MCP, URL fetching or Codex subprocess exists. Overall timeout and call/round limits bound the review. Tool-call metadata is evidence of local reads, not proof that the model understood them.
 
-The controller accepts only the backend's pinned adapter content digest, independent of installation path, and executes the same captured code in isolated Python for capability checking and review. The runner reads the canonical absolute request path once through descriptor-relative, no-follow file opens, verifies its bytes against the controller's expected digest, and sends those same bytes. A replaced file, symlink, mismatch or untrusted adapter fails before transmission.
+Reviewer returns stdout/API only, never writes worktree or report documents. Controller freezes original HEAD/index/files/modes, checks original and private snapshots after review, and only then saves results. Unexpected changes reject the report without rollback. No automatic commit. Every attempt has a fresh single-use operation binding; cleanup in finally must succeed.
 
-Success is enclosed exactly once by runner-owned `FLOW_REVIEW_REPORT_BEGIN` and `FLOW_REVIEW_REPORT_END`. If the model repeats identical framed JSON reports, the runner collapses them to one canonical frame; conflicting, incomplete, or malformed frames emit `PROTOCOL_ERROR` and exit 2. Other failures use a JSON code between `FLOW_REVIEW_ERROR_BEGIN` and `FLOW_REVIEW_ERROR_END` and exit 2. Exit 0 means a non-empty framed report arrived, not that the reviewed artifact passed.
+## Terminal protocol and convergence
 
-Preserve the report semantics while normalizing transport framing. Do not approve scope, resolve findings, edit files, implement fixes, commit, push, or reinterpret the report as approval.
+Runner owns one FLOW_REVIEW_REPORT_BEGIN / FLOW_REVIEW_REPORT_END frame. Identical repeated framed JSON normalizes to one report; conflicting terminal signals remain non-degradable. Structured failures use FLOW_REVIEW_ERROR_BEGIN / FLOW_REVIEW_ERROR_END and exit 2. Exit 0 is report receipt, not approval.
+
+Flow retries retryable RUN_ERROR/PROTOCOL_ERROR once; iBrain owns and rechecks its substantive findings. A fresh gpt-6-astra/medium final consistency review is still required. Historical duplicate-frame failures may only be invalidated by audited repair, preserving evidence and requiring a fresh review; never manufacture PASS.
+
+Do not resolve findings, approve, edit, implement, commit or push.

@@ -16,6 +16,7 @@ from .reviews import begin_review, repair_review_attempt, run_cursor_review, run
 from .snapshot import record_snapshot
 from .signals import record_signal
 from .state import audit_state, initialize_state, read_consistent_state, register_artifact, update_coder_state, validate_admission
+from .stage_summary import stage_summary
 
 
 def _parser():
@@ -31,6 +32,9 @@ def _parser():
 
     status = commands.add_parser("status")
     status.add_argument("--state", required=True)
+
+    audit = commands.add_parser("audit", help="Optional strict historical integrity audit")
+    audit.add_argument("--state", required=True)
 
     artifact = commands.add_parser("artifact")
     artifact_commands = artifact.add_subparsers(dest="artifact_command", required=True)
@@ -208,8 +212,10 @@ def dispatch(args):
     if args.command == "status":
         state = read_consistent_state(args.state)
         admission = validate_admission(state)
-        audit = audit_state(state)
-        return {"ok": True, "state": state, "admission": admission, "audit": audit}
+        return {"ok": True, "state": state, "admission": admission, "stage_summary": stage_summary(state)}
+    if args.command == "audit":
+        state = read_consistent_state(args.state)
+        return {"ok": True, "audit": audit_state(state)}
     if args.command == "artifact" and args.artifact_command == "verify":
         value = verify_artifact(args.path, args.type, args.issue, args.milestone)
         return {"ok": True, "artifact": value}
@@ -221,7 +227,7 @@ def dispatch(args):
         admitted = _validate_command_admission(args.state)
         if Path(args.repo).expanduser().resolve() != Path(admitted["worktree_path"]):
             raise FlowctlError("WORKTREE_MISMATCH")
-        result = resume_flow(args.issue, args.repo, args.inputs)
+        result = resume_flow(args.issue, args.repo, args.inputs, controller=admitted)
         result["discovered_next_stage"] = result["next_stage"]
         result["state"] = reconcile_resume(args.state, result, args.expected_revision)
         result["next_stage"] = None if result["state"]["current_stage"] == "complete" else result["state"]["current_stage"]

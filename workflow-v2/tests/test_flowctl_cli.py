@@ -50,7 +50,11 @@ class FlowctlCliTests(unittest.TestCase):
             self.assertEqual("handoff:requirement", registered["state"]["pending_action"])
             status = self.run_cli("status", "--state", state)
             self.assertEqual(1, status["state"]["state_revision"])
-            self.assertTrue(status["audit"]["event_head"].startswith("sha256:"))
+            self.assertEqual('进行中', status['stage_summary']['status'])
+            self.assertIsNone(status['stage_summary']['result'])
+            self.assertNotIn('audit', status)
+            audited = self.run_cli('audit', '--state', state)
+            self.assertTrue(audited['audit']['event_head'].startswith('sha256:'))
             resumed = self.run_cli(
                 "resume", "--issue", "BCS-710", "--repo", root,
                 "--state", state, "--expected-revision", 1,

@@ -1,5 +1,6 @@
 """Final review regressions at the controller and outbound boundaries."""
 import contextlib
+import hashlib
 import json
 import io
 import subprocess
@@ -302,8 +303,8 @@ class ReviewMetadataTests(unittest.TestCase):
         self.addCleanup(package.cleanup)
         request = json.loads(package.request_path.read_text())
         self.assertNotIn(str(self.root), package.request_path.read_text())
-        self.assertEqual(request['manifest']['files'][0]['source_digest'], digest(original))
-        self.assertEqual(request['manifest']['files'][0]['digest'], digest(request['files'][0]['content'].encode()))
+        self.assertEqual(next(item for item in request['manifest']['files'] if item['path'] == 'spec.md')['source_digest'], digest(original))
+        self.assertEqual(next(item for item in request['manifest']['files'] if item['path'] == 'spec.md')['digest'], digest((package.workspace_path / 'spec.md').read_bytes()))
 
     def test_explicit_source_context_allowed_and_bound(self):
         source = self.root / 'feature.py'
@@ -311,7 +312,7 @@ class ReviewMetadataTests(unittest.TestCase):
         package = self.package([self.file, source])
         self.addCleanup(package.cleanup)
         request = json.loads(package.request_path.read_text())
-        self.assertEqual([f['path'] for f in request['files']], ['spec.md', 'feature.py'])
+        self.assertTrue({'spec.md', 'feature.py'}.issubset({f['path'] for f in request['files']}))
         self.assertIn('source_snapshot', request['manifest'])
 
     def test_code_context_requires_recorded_snapshot_and_detects_source_drift(self):
@@ -342,13 +343,16 @@ class ReviewMetadataTests(unittest.TestCase):
         secret.write_text('safe text')
         linked = self.root / 'linked.txt'
         linked.symlink_to(self.file)
-        for candidate in (ignored, secret, linked):
-            with self.subTest(path=candidate), self.assertRaises(FlowctlError):
-                self.package([self.file, candidate])
-        for text in ('password=credential-lure', 'x' * (4 * 1024 * 1024 + 1)):
+        package = self.package([self.file, ignored, secret, linked])
+        self.addCleanup(package.cleanup)
+        self.assertTrue((package.workspace_path / 'ignored.txt').exists())
+        self.assertFalse((package.workspace_path / 'credentials.txt').exists())
+        self.assertFalse((package.workspace_path / 'linked.txt').exists())
+        for text in ('password="credential-lure"', 'x' * (4 * 1024 * 1024 + 1)):
             source.write_text(text)
-            with self.assertRaises(FlowctlError):
-                self.package([self.file, source])
+            package = self.package([self.file, source])
+            self.assertFalse((package.workspace_path / 'context.txt').exists())
+            package.cleanup()
 
 
 class ReviewConsumptionTests(unittest.TestCase):
@@ -400,7 +404,7 @@ class ReviewConsumptionTests(unittest.TestCase):
                 if '--check-capabilities' in command:
                     return subprocess.CompletedProcess(command, 0, json.dumps(module.capabilities()), '')
                 args = SimpleNamespace(request_file=command[4], expected_request_digest=command[command.index('--expected-request-digest') + 1],
-                    no_tools=True, model='glm-5.3', timeout_seconds=5)
+                    workspace=command[command.index('--workspace') + 1], model='glm-5.3', timeout_seconds=5)
                 stdout = io.StringIO()
                 with contextlib.redirect_stdout(stdout):
                     code = module.run_review(args, 'fixture-key')
@@ -408,11 +412,11 @@ class ReviewConsumptionTests(unittest.TestCase):
             with patch('flowctl_lib.reviews.subprocess.run', side_effect=execute), patch.object(module, 'request_json', return_value={'status':'completed','output_text':report.read_text()}) as outbound:
                 result = run(bound['binding_id'])
                 payload = outbound.call_args.kwargs['payload']
-                self.assertEqual(set(payload), {'model','input','stream'})
-                sent = [json.loads(payload['input'])]
+                self.assertEqual(set(payload), {'model','input','stream','instructions','tools'})
+                sent = [json.loads(payload['input'][0]['content'].split('REVIEW MANIFEST\n')[1])]
             self.assertEqual(result['status'], 'PASSED')
-            self.assertEqual([f['path'] for f in sent[0]['files']], [Path(p).name for p in paths])
-            self.assertEqual(sent[0]['files'][1]['content'], source.read_text())
+            self.assertTrue({Path(p).name for p in paths}.issubset({f['path'] for f in sent[0]['files']}))
+            self.assertEqual(next(f['digest'] for f in sent[0]['files'] if f['path'] == 'feature.py'), 'sha256:' + hashlib.sha256(source.read_bytes()).hexdigest())
             with patch('flowctl_lib.reviews._run_bound_package') as send:
                 with self.assertRaisesRegex(FlowctlError, 'AUTHORIZATION_BINDING_STALE'):
                     run(bound['binding_id'])

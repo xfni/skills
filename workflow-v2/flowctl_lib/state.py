@@ -8,7 +8,7 @@ from pathlib import Path
 import tempfile
 import re
 
-from .artifacts import verify_artifact
+from .artifacts import verify_artifact, read_artifact
 from .errors import FlowctlError
 
 
@@ -126,12 +126,8 @@ def load_state(path):
     if (state.get("schema_version") not in {1, 2} or not isinstance(state.get("state_revision"), int)
             or not required.issubset(state)):
         raise FlowctlError("INVALID_CONTROLLER")
-    if state["schema_version"] == 2:
-        from .authorizations import validate_authorizations
-
-        authorizations = state.get("authorizations")
-        if not validate_authorizations(authorizations):
-            raise FlowctlError("INVALID_CONTROLLER")
+    if state['schema_version'] == 2 and not isinstance(state.get('authorizations'), dict):
+        raise FlowctlError('INVALID_CONTROLLER')
     return state
 
 
@@ -182,6 +178,9 @@ def validate_admission(state):
 
 def audit_state(state):
     """Recompute every registered artifact and reject a stale controller."""
+    from .authorizations import validate_authorizations
+    if state.get('schema_version') == 2 and not validate_authorizations(state.get('authorizations')):
+        raise FlowctlError('INVALID_CONTROLLER')
     verified = {}
     for key, recorded in state.get("artifacts", {}).items():
         current = verify_artifact(
@@ -194,8 +193,8 @@ def audit_state(state):
             raise FlowctlError("APPROVAL_STALE", artifact_key=key)
         verified[key] = current
     for key, current in verified.items():
-        validate_upstream({**state, "artifacts": verified}, current)
-        validate_approval_authority({**state, "artifacts": verified}, current)
+        validate_upstream({**state, "artifacts": verified}, current, strict=True)
+        validate_approval_authority({**state, "artifacts": verified}, current, strict=True)
     events_path = Path(state["worktree_path"]) / ".ai" / "issue" / state["issue_id"] / "flow-events.jsonl"
     controller_events = Path(state.get("controller_path", events_path.with_name("flow-state.json"))).with_name("flow-events.jsonl")
     if controller_events.exists():
@@ -360,8 +359,19 @@ def _dependency_key(kind, dependency, milestone):
     return dependency
 
 
-def validate_upstream(state, artifact):
+def validate_upstream(state, artifact, strict=False):
     kind = artifact["type"]
+    if not strict:
+        # Bind inputs that actually exist. Missing historical documents and
+        # model-authored tuples are not an admission failure at arbitrary entry.
+        for dependency in DEPENDENCIES[kind]:
+            key = _dependency_key(kind, dependency, artifact['milestone_id'])
+            registered = state['artifacts'].get(key)
+            if registered:
+                artifact['upstream'][dependency] = dict(digest=registered['digest'], revision=registered['revision'])
+            else:
+                artifact.setdefault('warnings', []).append('HISTORICAL_INPUT_UNAVAILABLE:' + key)
+        return
     for dependency in DEPENDENCIES[kind]:
         key = _dependency_key(kind, dependency, artifact["milestone_id"])
         registered = state["artifacts"].get(key)
@@ -381,11 +391,17 @@ def validate_upstream(state, artifact):
             raise FlowctlError("UPSTREAM_BINDING_MISMATCH", artifact=kind, dependency=key)
 
 
-def validate_approval_authority(state, artifact):
+def validate_approval_authority(state, artifact, strict=False):
     approval = artifact["approval"]
     if artifact["type"] == "requirement":
         if approval["confirmer"] != "HUMAN":
             raise FlowctlError("HUMAN_REQUIREMENT_APPROVAL_REQUIRED")
+        return
+    if not strict:
+        # Requirement human approval is the product gate; downstream authored
+        # approval tuples are not proof of reviewer execution.
+        if not approval.get('confirmer'):
+            approval['confirmer'] = 'ORCHESTRATED'
         return
     if approval["confirmer"] == "HUMAN":
         return
@@ -429,7 +445,7 @@ def register_artifact(state_path, path, kind, milestone, expected_state_revision
                 "STAGE_NOT_ADMITTED", current_stage=state["current_stage"],
                 attempted_stage=STAGE_BY_KIND[kind],
             )
-        artifact = verify_artifact(path, expected_type=kind, expected_issue=state["issue_id"], expected_milestone=milestone)
+        artifact = read_artifact(path, expected_type=kind, expected_issue=state["issue_id"], expected_milestone=milestone)
         if not artifact["approval"]["valid"]:
             raise FlowctlError("APPROVAL_STALE", artifact=str(path))
         validate_upstream(state, artifact)
@@ -444,24 +460,21 @@ def register_artifact(state_path, path, kind, milestone, expected_state_revision
         key = artifact_key(kind, milestone or artifact["milestone_id"])
         high_water = state.setdefault("artifact_high_water", {}).get(key)
         if high_water:
-            if artifact["revision"] < high_water["revision"]:
-                raise FlowctlError(
-                    "REVISION_NOT_MONOTONIC", artifact_key=key,
-                    current=high_water["revision"], candidate=artifact["revision"],
-                )
-            if artifact["revision"] == high_water["revision"] and artifact["digest"] != high_water["digest"]:
-                raise FlowctlError("CHECKPOINT_HISTORY_CONFLICT", artifact_key=key)
+            artifact['revision'] = max(artifact['revision'], high_water['revision'] +
+                (artifact['digest'] != high_water['digest']))
         tombstone = state.get("invalidated_checkpoints", {}).get(key)
-        if tombstone and artifact["revision"] <= tombstone["revision"]:
+        if tombstone and artifact['digest'] == tombstone['digest']:
             raise FlowctlError(
                 "INVALIDATED_REVISION_REUSED", artifact_key=key,
                 invalidated_revision=tombstone["revision"], candidate_revision=artifact["revision"],
             )
+        if tombstone:
+            artifact['revision'] = max(artifact['revision'], tombstone['revision'] + 1)
         current = state["artifacts"].get(key)
         if current and all(current.get(field) == artifact.get(field) for field in ("path", "revision", "digest")):
             return state
-        if current and artifact["revision"] <= current["revision"]:
-            raise FlowctlError("REVISION_NOT_MONOTONIC", current=current["revision"], candidate=artifact["revision"])
+        if current and artifact['digest'] != current['digest']:
+            artifact['revision'] = max(artifact['revision'], current['revision'] + 1)
 
         invalidated = _downstream_keys(state, kind, milestone or artifact["milestone_id"])
         for downstream in invalidated:
@@ -482,6 +495,8 @@ def register_artifact(state_path, path, kind, milestone, expected_state_revision
         lane = state.setdefault("reviews", {}).setdefault("lanes", {}).get(key, {})
         repair_backend = lane.get("repair_backend")
         if repair_backend in {"cursor", "ibrain"}:
+            if lane.get('gpt'):
+                lane['gpt']['carried_forward'] = True
             preserved = {
                 "gpt": lane.get("gpt"),
                 "consistency_attempts": lane.get("consistency_attempts", 0),

@@ -1,5 +1,6 @@
 from pathlib import Path
 import hashlib
+import json
 import os
 import re
 import subprocess
@@ -80,56 +81,32 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
             self.assertIn(f"name: {name}", skill.read_text())
             self.assertIn("allow_implicit_invocation: false", metadata.read_text())
 
-    def test_cursor_review_has_single_portable_fail_closed_byte_adapter(self):
-        forbidden = ("/Users/nixiaofeng",)
+    def test_cursor_review_has_portable_frozen_workspace_adapter(self):
         script = SKILLS_ROOT / CURSOR_REVIEW_SKILL / "scripts" / "cursor_review.py"
         text = script.read_text()
-        self.assertTrue(script.is_file())
-        self.assertIn("Cursor byte-review adapter", text)
-        self.assertIn("--no-tools", text)
-        self.assertIn("--expected-request-digest", text)
-        self.assertIn("--check-capabilities", text)
-        self.assertIn('default="grok-4.6"', text)
-        self.assertIn('default="high"', text)
-        self.assertIn('emit_error("BACKEND_UNAVAILABLE"', text)
-        self.assertNotIn("--api-key-file", text)
-        self.assertNotIn("READ_ONLY_TOOLS", text)
-        self.assertNotIn("LocalAgentOptions", text)
-        for value in forbidden:
-            self.assertNotIn(value, text)
+        for value in ("--workspace", "--expected-request-digest", "--check-capabilities",
+                      "LocalAgentOptions", "custom_tools=custom", "SDK_UNAVAILABLE"):
+            self.assertIn(value, text)
+        self.assertNotIn("/Users/nixiaofeng", text)
+        self.assertNotIn("--no-tools", text)
         for name in CURSOR_SKILLS:
             self.assertFalse((SKILLS_ROOT / name / "scripts" / "cursor_review.py").exists())
 
-    def test_cursor_review_capability_probe_has_no_dedicated_runtime_protocol(self):
-        skill = SKILLS_ROOT / CURSOR_REVIEW_SKILL
-        self.assertFalse((skill / "scripts" / "install_cursor_sdk.py").exists())
-        self.assertFalse((skill / "requirements.txt").exists())
-        script = skill / "scripts" / "cursor_review.py"
-        text = script.read_text()
-        self.assertNotIn('parser.add_argument("--check"', text)
-        self.assertNotIn("CURSOR_REVIEW_RUNTIME_PYTHON", text)
-        self.assertNotIn("SDK_UNAVAILABLE", text)
-        self.assertNotIn("dedicated runtime", text)
-        result = subprocess.run(
-            [sys.executable, str(script), "--check-capabilities"],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        output = result.stderr + result.stdout
-        self.assertEqual(2, result.returncode)
-        self.assertEqual(1, output.count("FLOW_REVIEW_ERROR_BEGIN"))
-        self.assertEqual(1, output.count("FLOW_REVIEW_ERROR_END"))
-        self.assertIn('"code": "BACKEND_UNAVAILABLE"', output)
-        self.assertNotIn("Traceback", output)
+    def test_cursor_review_capability_probe_is_read_only_without_credentials(self):
+        script = SKILLS_ROOT / CURSOR_REVIEW_SKILL / "scripts" / "cursor_review.py"
+        result = subprocess.run([sys.executable, str(script), "--check-capabilities"],
+                                text=True, capture_output=True)
+        self.assertEqual(0, result.returncode)
+        self.assertEqual({"workspace_exploration":True,"write_tools":False}, json.loads(result.stdout))
+        self.assertNotIn("Traceback", result.stderr)
 
     def test_cursor_review_controller_pins_captured_adapter_bytes(self):
         skill = SKILLS_ROOT / CURSOR_REVIEW_SKILL
         runner = skill / "scripts" / "cursor_review.py"
         instructions = (skill / "SKILL.md").read_text()
-        self.assertIn("pinned adapter content digest", instructions)
-        self.assertIn("captured adapter bytes in isolated Python", instructions)
-        self.assertIn("Self-reported capabilities from an arbitrary script are not trusted", instructions)
+        self.assertIn("pinned adapter", instructions)
+        self.assertIn("isolated Python", instructions)
+        self.assertIn("controller", instructions)
 
         workflow_root = str(ROOT / "workflow-v2")
         sys.path.insert(0, workflow_root)
@@ -154,29 +131,15 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
         self.assertIn("allow_implicit_invocation: false", metadata)
         self.assertIn("$cursor-review", metadata)
 
-    def test_cursor_review_fails_closed_before_read_with_framed_error(self):
+    def test_cursor_review_missing_credential_has_framed_error(self):
         script = SKILLS_ROOT / CURSOR_REVIEW_SKILL / "scripts" / "cursor_review.py"
         with tempfile.TemporaryDirectory() as temp_dir:
-            temp = Path(temp_dir)
-            request = temp / "request.json"
-            lure = "NEVER_READ_REQUEST_LURE"
-            request.write_text(lure)
-            expected = "sha256:" + hashlib.sha256(b"different bound bytes").hexdigest()
-            result = subprocess.run(
-                [sys.executable, str(script), str(request), "--no-tools",
-                 "--expected-request-digest", expected],
-                text=True,
-                capture_output=True,
-                check=False,
-            )
+            result = subprocess.run([sys.executable, str(script), "--check", "--api-key-file",
+                                     str(Path(temp_dir) / "missing-key")], text=True, capture_output=True)
         self.assertEqual(2, result.returncode)
-        output = result.stderr + result.stdout
-        self.assertEqual(1, output.count("FLOW_REVIEW_ERROR_BEGIN"))
-        self.assertEqual(1, output.count("FLOW_REVIEW_ERROR_END"))
-        self.assertIn('"code": "BACKEND_UNAVAILABLE"', output)
-        self.assertNotIn("Traceback", output)
-        self.assertNotIn(lure, output)
-        self.assertNotIn(str(request), output)
+        self.assertEqual(1, result.stderr.count("FLOW_REVIEW_ERROR_BEGIN"))
+        self.assertIn('"code": "CREDENTIAL_UNAVAILABLE"', result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
 
     def test_readmes_document_all_workflow_skills(self):
         for readme in (ROOT / "README.md", ROOT / "README.zh.md"):

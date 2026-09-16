@@ -70,6 +70,111 @@ def _split_regions(text):
     return body, integrity, approval
 
 
+def read_artifact(path, expected_type=None, expected_issue=None, expected_milestone=None):
+    """Read necessary stage information; document metadata is advisory.
+
+    Strict serialization/integrity auditing remains available through
+    verify_artifact. Actual content hashes, not model-declared hashes, bind reviews.
+    """
+    path = Path(path).expanduser().resolve(strict=True)
+    raw = path.read_bytes()
+    try:
+        text = raw.decode('utf-8-sig').replace('\r\n', '\n').replace('\r', '\n')
+    except UnicodeDecodeError as exc:
+        raise FlowctlError('INVALID_UTF8') from exc
+    if not text.strip():
+        raise FlowctlError('ARTIFACT_EMPTY')
+    warnings = []
+    if raw.startswith(b'\xef\xbb\xbf') or b'\r' in raw:
+        warnings.append('NORMALIZED_DOCUMENT_ENCODING')
+
+    def region(begin, end, fallback=''):
+        if begin in text and end in text:
+            return text.split(begin, 1)[1].split(end, 1)[0].lstrip('\n')
+        return fallback
+
+    body = region(BODY_BEGIN, BODY_END, text)
+    fields = _fields(body)
+    integrity = _fields(region(INTEGRITY_BEGIN, INTEGRITY_END))
+    approval = _fields(region(APPROVAL_BEGIN, APPROVAL_END))
+
+    def one(source, key, default=None):
+        values = source.get(key, [])
+        if len(values) > 1:
+            warnings.append('DUPLICATE_METADATA:' + key)
+        return values[0] if values else default
+
+    kind = one(fields, 'artifact_type', one(fields, 'flow_step', expected_type))
+    issue = one(fields, 'issue_id', expected_issue)
+    milestone = one(fields, 'milestone_id', expected_milestone)
+    if kind not in KINDS:
+        raise FlowctlError('INVALID_ARTIFACT_TYPE')
+    for supplied, actual, code in ((expected_type, kind, 'ARTIFACT_TYPE_MISMATCH'),
+            (expected_issue, issue, 'ISSUE_MISMATCH'),
+            (expected_milestone, milestone, 'MILESTONE_MISMATCH')):
+        if supplied and supplied != actual:
+            raise FlowctlError(code)
+    try:
+        revision = max(1, int(one(fields, 'content_revision', '1')))
+    except ValueError:
+        revision = 1
+        warnings.append('IGNORED_DECLARED_REVISION')
+    digest = 'sha256:' + hashlib.sha256(body.encode()).hexdigest()
+    if one(integrity, 'content_digest') != digest:
+        warnings.append('DECLARED_DIGEST_MISSING_OR_STALE')
+    status = one(approval, 'status', one(fields, 'status'))
+    upstream = {}
+    for dependency in KINDS:
+        dep_digest = one(fields, dependency + '_digest')
+        dep_revision = one(fields, dependency + '_revision')
+        if dep_digest or dep_revision:
+            try:
+                dep_revision = int(dep_revision) if dep_revision else None
+            except ValueError:
+                dep_revision = None
+            upstream[dependency] = dict(digest=dep_digest, revision=dep_revision)
+
+    def optional_json(key):
+        value = one(fields, key)
+        if value is None:
+            return None
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            warnings.append('UNPARSED_METADATA:' + key)
+            return None
+
+    scenarios = optional_json('integration_scenarios') if kind == 'plan' else None
+    results = optional_json('integration_results') if kind == 'integration' else None
+    if results is not None:
+        validate_integration_results(results)
+        status = results['status']
+    targets = optional_json('target_milestones') if kind == 'roadmap' else None
+    dependencies = optional_json('milestone_dependencies') if kind == 'roadmap' else None
+    if targets is not None:
+        if not isinstance(targets, list) or not targets or not all(isinstance(item, str) and item for item in targets):
+            raise FlowctlError('INVALID_MILESTONE_GRAPH')
+        targets = list(dict.fromkeys(targets))
+        if dependencies is not None and not isinstance(dependencies, dict):
+            raise FlowctlError('INVALID_MILESTONE_GRAPH')
+        for target in targets:
+            values = (dependencies or {}).get(target, [])
+            if not isinstance(values, list) or any(item not in targets or item == target for item in values):
+                raise FlowctlError('INVALID_MILESTONE_GRAPH')
+    return dict(path=str(path), type=kind, issue_id=issue, milestone_id=milestone,
+        revision=revision, digest=digest, body_status=one(fields, 'status'), upstream=upstream,
+        target_milestones=targets, milestone_dependencies=dependencies or {},
+        integration_scenarios=scenarios,
+        integration_contract_present=kind == 'plan' and 'integration_scenarios' in fields,
+        integration_results=results, warnings=warnings,
+        approval=dict(valid=status in APPROVAL_BY_KIND[kind], status=status,
+            approved_revision=one(approval, 'approved_revision'),
+            approved_digest=one(approval, 'approved_digest'), confirmer=one(approval, 'confirmer'),
+            controller_run_id=one(approval, 'controller_run_id'),
+            requirement_revision=one(approval, 'requirement_revision'),
+            requirement_digest=one(approval, 'requirement_digest'), scope_binding=one(approval, 'scope_binding')))
+
+
 def verify_artifact(path, expected_type=None, expected_issue=None, expected_milestone=None):
     path = Path(path).expanduser().resolve(strict=True)
     raw = path.read_bytes()
