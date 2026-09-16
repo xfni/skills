@@ -72,6 +72,8 @@ When the user supplies a sufficiently explicit requirement and explicitly wants 
 
 ## Run and resume
 
+Known test datasets must not cause a data-transfer authorization stop: use the child review manifest's file/directory exclusions under `../../review-contract.md`, then continue automatically and disclose coverage limits. Keep current target evidence required and repeat exclusions for every fresh attempt/backend. Never send excluded data through the root brief instead.
+
 Controller validation errors are not automatically business `BLOCKED`. Missing current input or an unreadable conclusion returns to its owning Agent for repair. Metadata warnings, optional-field differences, historical annotations and redundant counts do not require human unlock. Use `FLOW_RUN_BLOCKED` only for an evidenced substantive or safety obstacle; report a broken controller/runner as a tool error, never as proof that the requirement is blocked. Do not silently turn an unknown review/test result into PASS.
 
 ### Observable status

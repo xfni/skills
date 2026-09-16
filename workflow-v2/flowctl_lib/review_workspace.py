@@ -99,13 +99,40 @@ def verify_review_snapshot(root, controller_path, expected, *, git_facts=True):
     return actual
 
 
-def create_review_view(root, destination, controller_path=None):
+def normalize_review_exclusions(exclusions):
+    if exclusions is None:
+        return []
+    if not isinstance(exclusions, list):
+        raise FlowctlError('INVALID_REVIEW_EXCLUSIONS')
+    result = []
+    for item in exclusions:
+        if (not isinstance(item, dict) or set(item) != {'path', 'kind', 'reason'}
+                or not isinstance(item['path'], str) or not item['path'].strip()
+                or item['kind'] not in ('file', 'directory')
+                or not isinstance(item['reason'], str) or not item['reason'].strip()):
+            raise FlowctlError('INVALID_REVIEW_EXCLUSIONS')
+        if any(character in item['path'] for character in '*?[]'):
+            raise FlowctlError('INVALID_REVIEW_EXCLUSIONS')
+        path = Path(item['path'])
+        if path.is_absolute() or not path.parts or '..' in path.parts or '\x00' in item['path']:
+            raise FlowctlError('REVIEW_PATH_ESCAPE')
+        result.append({'path': str(path), 'kind': item['kind'], 'reason': item['reason'].strip()})
+    return sorted(result, key=lambda item: (item['path'], item['kind'], item['reason']))
+
+
+def create_review_view(root, destination, controller_path=None, *, exclusions=None):
     from .review_package import read_regular
     root, destination = Path(root).resolve(), Path(destination)
+    exclusions = normalize_review_exclusions(exclusions)
     destination.mkdir(parents=True)
     files, excluded, total = [], [], 0
     for path, identity in _inventory(root, controller_path).items():
         rel = Path(path)
+        selected = next((item for item in exclusions if rel == Path(item['path']) or
+                         item['kind'] == 'directory' and Path(item['path']) in rel.parents), None)
+        if selected:
+            excluded.append({'path': path, 'reason': 'DECLARED_EXCLUSION', 'detail': selected['reason']})
+            continue
         reason = None
         if '.git' in rel.parts:
             reason = 'VCS_METADATA'

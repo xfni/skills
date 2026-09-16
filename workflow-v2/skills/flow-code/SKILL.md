@@ -29,6 +29,8 @@ Implement one approved plan.md with TDD and produce reviewable code plus unit-te
 
 ## Admission
 
+Before external review, apply declared file/directory data exclusions through the manifest recipe in `../../review-contract.md`. Exclude embedded-sample files without deleting data, disclose missing coverage, repeat exclusions on retries/fallback, and continue; prohibited test-data transfer alone is not a human gate.
+
 Register Code evidence as `DRAFT`, then capture its production snapshot before review. Follow the reviewed-stage lifecycle in `../../flowctl-contract.md`: complete the selected lanes, then update only the APPROVAL envelope on `approve:code`, register again, and hand off. Registration alone never means approval.
 
 Use the current Plan, milestone, worktree, allowed change surface and test commands. Required Plan review receipts must exist; all historical documents and model-declared exact tuples need not. Propagate inherited gaps without pausing and disclose missing history. Preserve protected files, permissions and the frozen code snapshot boundary.

@@ -127,7 +127,7 @@ class ReviewPackage:
             raise FlowctlError('REVIEW_PACKAGE_CLEANUP_FAILED') from None
 
 
-def create_review_package(state, backend, stage, artifact_key, prompt_path, paths=None):
+def create_review_package(state, backend, stage, artifact_key, prompt_path, paths=None, exclusions=None):
     active_authorization(state, backend, stage)
     root = Path(state['worktree_path']).resolve()
     artifact = state['artifacts'].get(artifact_key)
@@ -141,7 +141,10 @@ def create_review_package(state, backend, stage, artifact_key, prompt_path, path
             raise FlowctlError('INVALID_REVIEW_MANIFEST')
         for path in paths:
             relative_path(root, path)  # Hints never restrict the autonomous evidence scope.
-    from .review_workspace import capture_review_snapshot, create_review_view
+    from .review_workspace import capture_review_snapshot, create_review_view, normalize_review_exclusions
+    exclusions = normalize_review_exclusions(exclusions)
+    for item in exclusions:
+        check_content(item['reason'].encode(), prompt=True)
     from .artifacts import read_artifact as verify_artifact
     from .snapshot import verify_recorded_snapshot
     if stage == 'flow-code':
@@ -150,7 +153,7 @@ def create_review_package(state, backend, stage, artifact_key, prompt_path, path
     source_snapshot = capture_review_snapshot(root, controller_path)
     package_root = Path(tempfile.mkdtemp(prefix='flow-review-')).resolve()
     try:
-        view = create_review_view(root, package_root / 'workspace', controller_path)
+        view = create_review_view(root, package_root / 'workspace', controller_path, exclusions=exclusions)
         available = {item['path'] for item in view['files']}
         # Historical context is available to the reviewer but only its target
         # is mandatory. Missing/excluded history is not a package-wide gate.
@@ -169,6 +172,8 @@ def create_review_package(state, backend, stage, artifact_key, prompt_path, path
             authorization_basis='ORGANIZATION_TRUSTED' if backend == 'ibrain' else 'EXPLICIT_FLOW_INVOCATION',
             prompt_digest=digest(prompt.encode()), files=view['files'], excluded=view['excluded'],
             source_snapshot={key: value for key, value in source_snapshot.items() if key != 'files'})
+        if exclusions:
+            manifest['exclusions'] = exclusions
         raw = canonical(dict(schema_version=2, manifest=manifest, prompt=prompt,
                              files=view['files'], capabilities=CAPABILITIES))
         (package_root / 'request.json').write_bytes(raw)
@@ -207,7 +212,7 @@ def validate_review_manifest(state_path, manifest_path, expected_revision):
     try:
         manifest = json.loads(Path(manifest_path).read_text(encoding='utf-8'))
         required = {'backend', 'stage', 'artifact_key', 'prompt_path'}
-        if not required.issubset(manifest) or set(manifest) - required - {'paths'}:
+        if not isinstance(manifest, dict) or not required.issubset(manifest) or set(manifest) - required - {'paths', 'exclusions'}:
             raise ValueError('invalid manifest')
     except (OSError, ValueError, TypeError):
         raise FlowctlError('INVALID_REVIEW_MANIFEST') from None

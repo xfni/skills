@@ -27,6 +27,8 @@ Turn one approved spec.md into ordered, executable tasks. Plan how to implement 
 
 ## Admission
 
+Before external review, apply declared file/directory data exclusions through the manifest recipe in `../../review-contract.md`. Exclude embedded-sample files without deleting data, disclose missing coverage, repeat exclusions on retries/fallback, and continue; prohibited test-data transfer alone is not a human gate.
+
 Register the review candidate as `DRAFT` before dispatching reviews. Follow the reviewed-stage lifecycle in `../../flowctl-contract.md`: complete the selected lanes, then update only the APPROVAL envelope on `approve:plan`, register again, and hand off. Registration alone never means approval.
 
 Use the selected milestone, current Spec or explicitly supplied Plan/task boundary, and available context. Do not require all earlier documents or model-authored exact revision/digest tuples. Preserve inherited gaps without pausing. Required reviews are backed by actual controller receipts; missing history is disclosed, not fabricated.

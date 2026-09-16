@@ -10,6 +10,18 @@ The root supplies purpose, approved scope/non-goals, changed boundary, known ris
 
 ## Frozen view and binding
 
+### Declared data exclusions
+
+If known production/test datasets would enter the reviewer view, the root must exclude them mechanically and continue review, not ask for data-transfer authorization or stop solely because data transfer is prohibited. Use the existing review `--manifest` with optional `exclusions`:
+
+```json
+{"backend":"cursor","stage":"flow-plan","artifact_key":"plan:MILESTONE-1","prompt_path":"/absolute/worktree/review_prompt.md","exclusions":[{"path":"tests/data","kind":"directory","reason":"production-derived test inputs"},{"path":"tests/test_legacy_replay.py","kind":"file","reason":"embedded production samples; test logic omitted"}]}
+```
+
+Paths are relative to the admitted worktree; file matching is exact, directory matching includes descendants by path components, never glob matching. Root/absolute/parent-escape paths are invalid. Only exclusion paths and data-free reasons enter metadata; excluded bytes never enter the copied view or read/search tools. The normalized declaration and actual excluded-file list bind the request digest. Repeat the current declaration in every fresh retry/revision/backend manifest, including iBrain fallback; `paths` remains exploration hints, not an exclusion mechanism.
+
+Production data outside the worktree remains preferred. For existing embedded samples, exclude the whole mixed file without changing its contents and disclose the omitted test logic; leave other source/tests available. Split data from test logic only when needed and authorized, not as a universal prerequisite. Never exclude the current target or claim an excluded test/data result was independently inspected. Reviewer records coverage limits; data exclusion alone is non-blocking. Only demonstrably missing approval-critical evidence warrants a finding/repair, and it never authorizes data transfer. Keep exclusions out of original source-snapshot filtering: all excluded source files still participate in mutation detection.
+
 flowctl creates a private snapshot with schema-version-2 request, relative whole-view file manifest, per-file source/content digests, exclusions, prompt digest and source snapshot digest/HEAD/index facts. Only the current target must be registered, content-current and readable in the view. Available historical documents remain context; missing or changed history is a disclosed coverage limit, not a package-wide gate.
 
 Exclude credentials, secrets, raw production data, external paths, symlinks, Git metadata/pointers, caches/dependencies, binaries and oversized files. Also exclude executable reviewer settings (.cursor and .mcp.json); Cursor loads only project settings from this configuration-free view, not user/team/plugin settings. Current limits: 4 MiB per file, 256 MiB eligible view; exceeding total limits blocks rather than selecting convenient evidence. Content/path filtering is a conservative safety screen, not proof that all sensitive data can be recognized. Never deliberately place production datasets or secrets in ordinary source names to bypass exclusions. Note every exclusion and material missing evidence as coverage limits.

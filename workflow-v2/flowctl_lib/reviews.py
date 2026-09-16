@@ -34,8 +34,8 @@ UNCLASSIFIED_LIMIT = 2
 # Content identities, independent of installation path. Update only with reviewed
 # adapter changes. No caller/state/manifest may supply or extend this registry.
 TRUSTED_ADAPTER_DIGESTS = {
-    'cursor': frozenset({'26eec44de44968c0bc3a5d44b6820eb7c2393d875ef2cac966500abb206d5c0f'}),
-    'ibrain': frozenset({'0071b4e41049298b9d6fe807b990e84bea9e3f1befd35e2e3d7a87a8bcfb93c3'}),
+    'cursor': frozenset({'172131cafcc03f17450a7dd098d3e1a13b8b6105ee9288144cc5f32f47b26c5a'}),
+    'ibrain': frozenset({'1f6b9c10035cb7a773407dac05f3024403da10f6d8a1fc19d31e0d854d987175'}),
 }
 
 
