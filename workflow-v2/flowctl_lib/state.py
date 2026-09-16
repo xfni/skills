@@ -67,13 +67,16 @@ def _initialize_state_locked(path, issue_id, repo_root, branch, run_id=None):
         if state["issue_id"] != issue_id:
             raise FlowctlError("ISSUE_MISMATCH")
         expected_root = str(Path(repo_root).expanduser().resolve())
-        if state["worktree_path"] != expected_root or state["branch"] != branch:
+        if (state["repo_root"] != expected_root
+                or state["worktree_path"] != expected_root
+                or state["branch"] != branch):
             raise FlowctlError(
-                "CONTROLLER_ADMISSION_MISMATCH", expected_worktree=expected_root,
-                actual_worktree=state["worktree_path"], expected_branch=branch,
-                actual_branch=state["branch"],
+                "CONTROLLER_ADMISSION_MISMATCH",
+                expected_repo=expected_root, actual_repo=state["repo_root"],
+                expected_worktree=expected_root, actual_worktree=state["worktree_path"],
+                expected_branch=branch, actual_branch=state["branch"],
             )
-        return state
+        return _migrate_state_locked(path, state)
     now = utc_now()
     state = {
         "schema_version": 1,
@@ -103,6 +106,9 @@ def _initialize_state_locked(path, issue_id, repo_root, branch, run_id=None):
         "updated_at": now,
         "event_head": None,
     }
+    from .authorizations import migrate_state
+
+    state, _ = migrate_state(state)
     _atomic_json(path, state)
     return state
 
@@ -117,10 +123,28 @@ def load_state(path):
     except (json.JSONDecodeError, UnicodeError) as exc:
         raise FlowctlError("INVALID_CONTROLLER") from exc
     required = {"issue_id", "run_id", "repo_root", "worktree_path", "branch", "current_stage", "pending_action", "artifacts", "reviews"}
-    if (state.get("schema_version") != 1 or not isinstance(state.get("state_revision"), int)
+    if (state.get("schema_version") not in {1, 2} or not isinstance(state.get("state_revision"), int)
             or not required.issubset(state)):
         raise FlowctlError("INVALID_CONTROLLER")
+    if state["schema_version"] == 2:
+        from .authorizations import validate_authorizations
+
+        authorizations = state.get("authorizations")
+        if not validate_authorizations(authorizations):
+            raise FlowctlError("INVALID_CONTROLLER")
     return state
+
+
+def _migrate_state_locked(path, state):
+    from .authorizations import migrate_state
+
+    migrated, changed = migrate_state(state)
+    if not changed:
+        return migrated
+    return commit_state(path, migrated, "STATE_SCHEMA_MIGRATED", {
+        "from_schema_version": 1,
+        "to_schema_version": 2,
+    })
 
 
 def read_consistent_state(path):
@@ -130,7 +154,7 @@ def read_consistent_state(path):
     with lock_path.open("a+") as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
         _recover_transaction(path)
-        return load_state(path)
+        return _migrate_state_locked(path, load_state(path))
 
 
 def validate_admission(state):
@@ -196,6 +220,8 @@ def audit_state(state):
 
 
 def reject_if_paused(state):
+    from .replay import reject_unresolved_cleanup
+    reject_unresolved_cleanup(state)
     signal = state.get("pending_signal", {}).get("signal")
     if signal in {"FLOW_RUN_HUMAN_GATE", "FLOW_RUN_BLOCKED"}:
         raise FlowctlError("FLOW_PAUSED", signal=signal)
@@ -215,6 +241,7 @@ def locked_state(path, expected_revision):
                 "STATE_CONFLICT", expected_revision=expected_revision,
                 actual_revision=state["state_revision"],
             )
+        state = _migrate_state_locked(path, state)
         yield state
 
 
@@ -407,6 +434,9 @@ def register_artifact(state_path, path, kind, milestone, expected_state_revision
             raise FlowctlError("APPROVAL_STALE", artifact=str(path))
         validate_upstream(state, artifact)
         validate_approval_authority(state, artifact)
+        if kind == 'integration':
+            from .integration_results import require_integration_results
+            require_integration_results(artifact, state['artifacts'].get(f"plan:{artifact['milestone_id']}"))
         if kind in {"spec", "plan", "code", "integration"}:
             active = state.get("active_milestone")
             if state.get("target_milestones") and artifact["milestone_id"] != active:

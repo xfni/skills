@@ -3,6 +3,43 @@
   "title": "Flow v2 non-success signal",
   "type": "object",
   "additionalProperties": false,
+  "allOf": [{
+    "if": {
+      "properties": {
+        "signal": {"enum": ["FLOW_RUN_BLOCKED", "FLOW_RUN_ROUTE_BACK"]},
+        "stage": {"const": "flow-integration"}
+      },
+      "required": ["signal", "stage"]
+    },
+    "then": {"required": ["integration_results"]},
+    "else": {"not": {"required": ["integration_results"]}}
+  }, {
+    "if": {
+      "properties": {
+        "signal": {"const": "FLOW_RUN_ROUTE_BACK"},
+        "stage": {"const": "flow-integration"}
+      },
+      "required": ["signal", "stage"]
+    },
+    "then": {
+      "properties": {
+        "integration_results": {"properties": {"status": {"const": "FAILED"}}}
+      }
+    }
+  }, {
+    "if": {
+      "properties": {
+        "signal": {"const": "FLOW_RUN_BLOCKED"},
+        "stage": {"const": "flow-integration"}
+      },
+      "required": ["signal", "stage"]
+    },
+    "then": {
+      "properties": {
+        "integration_results": {"properties": {"status": {"const": "BLOCKED"}}}
+      }
+    }
+  }],
   "required": ["schema_version", "signal", "issue_id", "run_id", "stage", "cause", "evidence", "resume_condition"],
   "properties": {
     "schema_version": {"const": 1},
@@ -15,6 +52,49 @@
     "resume_condition": {"type": "string", "minLength": 1},
     "owner_stage": {"type": "string"},
     "next_stage": {"type": "string"},
-    "gate": {"type": "string"}
+    "gate": {"type": "string"},
+    "integration_results": {"$ref": "#/$defs/integration_results"}
+  },
+  "$defs": {
+    "gap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "scenario_ids", "missing_assurance", "reason", "owner", "remediation", "status", "plan_digest", "plan_revision"],
+      "properties": {
+        "type": {"const": "PRODUCTION_REPLAY_GAP"},
+        "scenario_ids": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"type": "string", "minLength": 1}},
+        "missing_assurance": {"type": "string", "minLength": 1},
+        "reason": {"type": "string", "minLength": 1},
+        "owner": {"type": "string", "minLength": 1},
+        "remediation": {"type": "string", "minLength": 1},
+        "status": {"const": "OPEN"},
+        "plan_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "plan_revision": {"type": "integer", "minimum": 1}
+      }
+    },
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenario_id", "status"],
+      "properties": {
+        "scenario_id": {"type": "string", "minLength": 1},
+        "status": {"enum": ["PASSED", "FAILED", "BLOCKED", "SKIPPED_AUTHORIZED_REPLAY"]}
+      }
+    },
+    "integration_results": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "executed_count", "skipped_count", "gaps", "warnings", "plan_digest", "plan_revision", "scenarios"],
+      "properties": {
+        "status": {"enum": ["PASSED", "FAILED", "BLOCKED", "COMPLETE_WITH_DEFECT"]},
+        "executed_count": {"type": "integer", "minimum": 0},
+        "skipped_count": {"type": "integer", "minimum": 0},
+        "gaps": {"type": "array", "items": {"$ref": "#/$defs/gap"}},
+        "warnings": {"type": "array", "items": {"const": "ZERO_EXECUTED_SCENARIOS"}},
+        "plan_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "plan_revision": {"type": "integer", "minimum": 1},
+        "scenarios": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/scenario"}}
+      }
+    }
   }
 }

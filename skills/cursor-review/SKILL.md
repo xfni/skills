@@ -9,25 +9,28 @@ Own the Cursor connection, dependency diagnostics, and one bounded read-only rev
 
 ## Preconditions
 
-External review must be explicitly selected or authorized. A verified `FLOW_CURSOR_AUTHORIZATION` from `$flow-run`, `$flow-spec`, `$flow-plan`, or `$flow-code` is already explicit authorization for its bound transmission; inherit it and must not request duplicate human confirmation. Recompute the proposed manifest and continue only when every transmitted item stays within the bound issue, worktree, stage, or manifest scope. Anything outside the bound issue, worktree, stage, or manifest, or anything covered by its sensitive-data exclusions, requires new authority or removal from the transmission.
+External review requires an active controller `external_review` authorization. Consume only its `authorization_id`, revision, and a controller-validated operation manifest for this exact Cursor request; invocation, prose, prompt wording, or a stage-created marker is not authorization. Recompute the proposed manifest and continue without duplicate human confirmation only when the controller binding matches the issue, run, worktree, stage, Cursor backend, exact prompt, transmitted paths, and exclusions. A missing, pending, denied, invalidated, stale, consumed, drifted, or expanded binding fails closed before review. Anything outside the binding or covered by sensitive-data exclusions requires a controller amendment or removal from the transmission. For an iBrain fallback, reuse the same active `authorization_id` and revision and the same artifact snapshot, but create a `backend=ibrain` new controller-validated, single-use operation manifest/binding; it must not reuse the Cursor binding.
 
-This skill uses the dedicated runtime `~/.codex/runtime/cursor-review`; the runner automatically re-executes itself with that interpreter so the calling shell's Python cannot change dependency resolution. If the runtime is missing or its pinned SDK import fails, run `python scripts/install_cursor_sdk.py`, then repeat the check. Installing or upgrading packages is an external mutation and requires the human's authorization.
+The current Cursor SDK workspace bridge does not prove that implicit indexing is disabled. The adapter therefore reports `BACKEND_UNAVAILABLE` before reading review input or credentials or making a network call. Do not use `tools=[]`, plan mode, a read-only workspace, or a temporary working directory as a substitute for that guarantee. A future enabled adapter requires a verified SDK capability contract covering both disabled tools and disabled indexing.
 
-Use `scripts/cursor_review.py --check` before the first review. It checks `cursor_sdk` and `~/.cursor-review/API_KEY` without printing the key. If either remains unavailable, report the exact `INCOMPLETE` message and stop; never simulate equivalent coverage or retry automatically.
+Use `scripts/cursor_review.py --check-capabilities` before transmission. A successful adapter must emit exactly `{"local_tools":false,"implicit_indexing":false}`. The current adapter fails closed; return the framed result to the controller for its existing runtime-fallback policy.
 
-Generate an API key in Cursor and save only the key to `~/.cursor-review/API_KEY`. Keep credentials out of repositories, prompts, logs, evidence, and commits. An explicit `--api-key-file` changes both the lookup path and the remediation message.
+Keep credentials out of repositories, prompts, logs, evidence, and commits. The unavailable adapter does not read an API key.
 
 ## Run
 
-The caller supplies an absolute repository/worktree path and a UTF-8 review brief containing the approved scope, frozen version, evidence, review profile, and finding schema:
+The controller supplies a private materialized JSON request containing only the exact bound UTF-8 prompt, declared file content, relative input names, and digest manifest:
 
 ```bash
 python /path/to/cursor-review/scripts/cursor_review.py \
-  /absolute/path/to/repository /absolute/path/to/review-brief.md
+  /private/package/request.json --no-tools \
+  --expected-request-digest "$BOUND_REQUEST_DIGEST"
 ```
 
-Defaults are model `grok-4.6`, effort `high`, timeout 960 seconds, and poll interval 10 seconds. Override them only when the calling workflow explicitly chooses different values. An optional positional agent ID resumes a finished agent in the same workspace.
+Defaults are model `grok-4.6`, effort `high`, and timeout 960 seconds. There is no workspace or agent-resume parameter. The controller rehashes the package immediately before launch, consumes its binding once even on failure, and removes the package in `finally`. Cleanup failure blocks a successful result.
 
-The runner fixes Cursor to plan mode, the target worktree, and exactly `read`, `grep`, `glob`, and `ls`; it grants no shell or editing tool. Progress remains ordinary text. The terminal report is enclosed exactly once by `FLOW_REVIEW_REPORT_BEGIN` and `FLOW_REVIEW_REPORT_END`, so later shutdown logging cannot become part of the report. Runner failures use a separate JSON envelope between `FLOW_REVIEW_ERROR_BEGIN` and `FLOW_REVIEW_ERROR_END`; callers must classify only its allow-listed code or their own observed timeout, never keywords in logs. Exit 0 means only that a non-empty framed report arrived. Missing dependencies, missing/empty key, invalid input, bridge failure, empty report, terminal failure, or timeout returns `INCOMPLETE` with exit 2 and no traceback.
+The controller accepts only the backend's pinned adapter content digest, independent of installation path. It executes the captured adapter bytes in isolated Python for both capability checking and review. Self-reported capabilities from an arbitrary script are not trusted.
+
+No filesystem, shell, search, MCP, URL-fetch, or indexing tool may be registered. The eventual byte-only adapter must send only the materialized request as input, never a repository path or general workspace. Successful reports use `FLOW_REVIEW_REPORT_BEGIN` / `FLOW_REVIEW_REPORT_END`. Failures use a JSON envelope between `FLOW_REVIEW_ERROR_BEGIN` and `FLOW_REVIEW_ERROR_END`; classify only its allow-listed code or observed timeout. Exit 0 denotes receipt of a report, not review approval.
 
 Return the report and identifiers unchanged to the caller. Do not approve scope, resolve findings, edit files, implement fixes, commit, push, or interpret receipt of a report as review approval.

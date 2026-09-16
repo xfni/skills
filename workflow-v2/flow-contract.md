@@ -27,7 +27,11 @@ Direct invocation performs this same admission when no controller exists. It may
 
 ## Human interaction boundary
 
-Requirement brainstorming and the final requirement authorization are the only normal human decision points. That authorization binds the requirement revision/digest, scope, non-goals, success boundary, target milestones, and permission for downstream Flow stages to make implementation decisions and continue autonomously.
+After controller and worktree admission and before requirement work, `$flow-run` presents one consolidated run authorization gate for external review and sanitized local production replay. These are separate structured decisions in one interaction, persisted by flowctl with controller-generated authorization IDs. Resume reuses an active ID while operation manifests remain inside its recorded scope; natural-language assent and stage-local phrases are not authorization. A changed decision follows the controller amendment transition instead of overwriting the prior record.
+
+For an iBrain fallback, reuse the same active `authorization_id` and revision and the same artifact snapshot, but create a `backend=ibrain` new controller-validated, single-use operation manifest/binding; it must not reuse the Cursor binding. Backend fallback changes operation identity, not human authorization scope or reviewed artifact identity.
+
+Requirement brainstorming and the final requirement authorization are the other normal human decision points. That authorization binds the requirement revision/digest, scope, non-goals, success boundary, target milestones, and permission for downstream Flow stages to make implementation decisions and continue autonomously.
 
 After authorization, interrupt the human only for a decision or authority that cannot be safely derived within that binding: changing product scope or success criteria; production/customer-data or irreversible action; credentials or sandbox authority; conflicting authoritative inputs; or a high-risk blocker that cannot be resolved safely. Reviews, artifact handoffs, milestone traversal, recoverable validation failures, and non-production governed tests are not human gates.
 

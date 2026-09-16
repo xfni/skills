@@ -4,6 +4,7 @@ from pathlib import Path
 import re
 
 from .errors import FlowctlError
+from .integration_results import validate_integration_results, validate_plan_integration_scenarios
 
 
 BODY_BEGIN = "--- FLOW BODY BEGIN ---"
@@ -25,7 +26,7 @@ APPROVAL_BY_KIND = {
     "spec": {"APPROVED", "APPROVED_WITH_DEFECT"},
     "plan": {"APPROVED", "APPROVED_WITH_DEFECT"},
     "code": {"APPROVED", "COMPLETE", "COMPLETE_WITH_DEFECT"},
-    "integration": {"PASSED"},
+    "integration": {"PASSED", "COMPLETE_WITH_DEFECT"},
 }
 
 
@@ -121,6 +122,34 @@ def verify_artifact(path, expected_type=None, expected_issue=None, expected_mile
     if approval_status not in APPROVAL_BY_KIND[artifact_type]:
         approval_valid = False
 
+    integration_scenarios = None
+    integration_scenarios_text = _one(body_fields, "integration_scenarios")
+    if artifact_type == "plan":
+        if integration_scenarios_text is not None:
+            try:
+                integration_scenarios = json.loads(integration_scenarios_text)
+            except json.JSONDecodeError as exc:
+                raise FlowctlError("INVALID_PLAN_INTEGRATION_SCENARIOS") from exc
+            validate_plan_integration_scenarios(integration_scenarios)
+    elif integration_scenarios_text is not None:
+        raise FlowctlError("INVALID_PLAN_INTEGRATION_SCENARIOS")
+
+    integration_results = None
+    integration_results_text = _one(body_fields, "integration_results")
+    if integration_results_text is not None:
+        if artifact_type != "integration":
+            raise FlowctlError("INVALID_INTEGRATION_RESULTS")
+        try:
+            integration_results = json.loads(integration_results_text)
+        except json.JSONDecodeError as exc:
+            raise FlowctlError("INVALID_INTEGRATION_RESULTS") from exc
+        validate_integration_results(integration_results)
+        if (integration_results["status"] != _one(body_fields, "status")
+                or integration_results["status"] != approval_status):
+            raise FlowctlError("INTEGRATION_STATUS_MISMATCH")
+    elif artifact_type == "integration" and approval_status == "COMPLETE_WITH_DEFECT":
+        approval_valid = False
+
     upstream = {}
     for kind in KINDS:
         upstream_digest = _one(body_fields, f"{kind}_digest")
@@ -131,6 +160,11 @@ def verify_artifact(path, expected_type=None, expected_issue=None, expected_mile
             except ValueError as exc:
                 raise FlowctlError("INVALID_UPSTREAM_REVISION", artifact=kind) from exc
             upstream[kind] = {"digest": upstream_digest, "revision": parsed_revision}
+    if integration_results is not None:
+        plan_binding = upstream.get("plan")
+        if (not plan_binding or integration_results["plan_digest"] != plan_binding["digest"]
+                or integration_results["plan_revision"] != plan_binding["revision"]):
+            raise FlowctlError("INTEGRATION_PLAN_BINDING_MISMATCH")
 
     target_milestones = None
     milestone_dependencies = None
@@ -170,6 +204,8 @@ def verify_artifact(path, expected_type=None, expected_issue=None, expected_mile
         "upstream": upstream,
         "target_milestones": target_milestones,
         "milestone_dependencies": milestone_dependencies,
+        "integration_scenarios": integration_scenarios,
+        "integration_results": integration_results,
         "approval": {
             "valid": approval_valid,
             "status": approval_status,

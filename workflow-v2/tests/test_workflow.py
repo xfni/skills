@@ -89,6 +89,11 @@ class WorkflowV2Tests(unittest.TestCase):
         self.assertIn("start at `$flow-roadmap`", text)
         self.assertIn("COMPLETE_WITH_DEFECT", text)
         self.assertIn("EXTERNAL_REVIEW_GAP", text)
+        for value in (
+            "valid terminal `COMPLETE_WITH_DEFECT`", "PRODUCTION_REPLAY_GAP",
+            "every open gap", "must not claim clean completion",
+        ):
+            self.assertIn(value, text)
 
     def test_flow_run_discovers_issue_then_artifacts_or_asks_for_paths(self):
         text = self.skill("flow-run")
@@ -312,7 +317,9 @@ class WorkflowV2Tests(unittest.TestCase):
             "FLOW_REVIEW_ERROR_END",
             "two `UNCLASSIFIED`",
             "BLOCKED_REVIEW",
-            "not degradable",
+            "never fallback conditions",
+            "UNKNOWN_BACKEND_FAILURE",
+            "PROTOCOL_ERROR",
         ):
             self.assertIn(value, flowctl)
         self.assertIn("cannot force the host Agent to invoke flowctl", flowctl)
@@ -388,8 +395,8 @@ class WorkflowV2Tests(unittest.TestCase):
                 "**REQUIRED SUB-SKILL:** Use ibrain-review",
                 "gpt-5.6-sol", "high", "gpt-6-astra", "medium",
                 "root agent", "difficulty", "GPT Lane", "Cursor Lane",
-                "final consistency review", "automatically authorizes",
-                "in-scope code and documents", "secrets",
+                "final consistency review", "does not create review authority",
+                "authorization_id", "controller-validated operation manifest", "secrets",
                 "BLOCKED_REVIEW", "glm-5.3",
                 "review_binding", "immediately before dispatch and after receipt",
                 "missing/mismatched binding", "stale or unbound report",
@@ -407,8 +414,8 @@ class WorkflowV2Tests(unittest.TestCase):
         for name, status in expected_status.items():
             text = self.skill(name)
             for value in (
-                "retry exactly once",
-                "is not degradable",
+                "bounded retry behavior",
+                "not degradable",
                 status,
                 "EXTERNAL_REVIEW_GAP",
                 "ibrain-review",
@@ -439,29 +446,172 @@ class WorkflowV2Tests(unittest.TestCase):
         ):
                 self.assertIn(value, text)
 
-    def test_flow_cursor_authorization_is_inherited_without_reprompting(self):
+    def test_flow_authorization_uses_one_controller_bound_gate_without_magic_phrases(self):
         runner = self.skill("flow-run")
+        flow_contract = (ROOT / "flow-contract.md").read_text()
         contract = (ROOT / "orchestration-contract.md").read_text()
         for value in (
-            "cursor_transmission_authorization",
-            "entire Flow run",
-            "must not ask the human again",
-            "issue_id",
-            "run_id",
-            "allowed_scope",
+            "one consolidated human gate",
+            "external_review",
+            "production_replay",
+            "允许最小必要范围的外部审查（推荐）",
+            "不允许外部审查",
+            "允许脱敏后回放生产数据（推荐）",
+            "不进行依赖生产数据的集成测试",
+            "flowctl authorization decide",
+            "flowctl authorization amend",
+            "authorization_id",
+            "manifest",
         ):
             self.assertIn(value, runner)
-        self.assertIn("FLOW_CURSOR_AUTHORIZATION", contract)
-        self.assertIn("inherits", contract)
-
-        cursor = (ROOT.parent / "skills" / "cursor-review" / "SKILL.md").read_text()
-        for value in (
-            "FLOW_CURSOR_AUTHORIZATION",
-            "already explicit authorization",
-            "must not request duplicate human confirmation",
-            "outside the bound issue, worktree, stage, or manifest",
+        self.assertEqual(1, runner.count("允许最小必要范围的外部审查（推荐）"))
+        self.assertEqual(1, runner.count("不允许外部审查"))
+        self.assertEqual(1, runner.count("允许脱敏后回放生产数据（推荐）"))
+        self.assertEqual(1, runner.count("不进行依赖生产数据的集成测试"))
+        for mapping in (
+            '外部审查选择映射：第一项为 `{"decision":"GRANTED","allowed_stages":["flow-spec","flow-plan","flow-code"]}`，第二项为 `{"decision":"DENIED","allowed_stages":["flow-spec","flow-plan","flow-code"]}`',
+            '生产回放选择映射：第一项为 `{"decision":"SANITIZED_LOCAL_REPLAY"}`，第二项为 `{"decision":"SKIP_PRODUCTION_REPLAY"}`',
         ):
-            self.assertIn(value, cursor)
+            self.assertIn(mapping, runner)
+        for text in (runner, flow_contract, contract):
+            self.assertNotIn("FLOW_CURSOR_" + "AUTHORIZATION", text)
+            self.assertNotIn("FLOW_IBRAIN_" + "AUTHORIZATION", text)
+        for value in ("authorization_id", "operation manifest", "must not ask the human again"):
+            self.assertIn(value, contract)
+        self.assertIn("consolidated run authorization gate", flow_contract)
+
+    def test_external_review_surfaces_consume_only_controller_authorization_and_manifest(self):
+        legacy_tokens = (
+            "FLOW_CURSOR_" + "AUTHORIZATION",
+            "FLOW_IBRAIN_" + "AUTHORIZATION",
+        )
+        surfaces = list((ROOT / "skills").glob("*/SKILL.md")) + [
+            ROOT.parent / "skills" / "cursor-review" / "SKILL.md",
+            ROOT.parent / "skills" / "ibrain-review" / "SKILL.md",
+        ]
+        for path in surfaces:
+            text = path.read_text()
+            for token in legacy_tokens:
+                self.assertNotIn(token, text, str(path))
+
+        for name in ("flow-spec", "flow-plan", "flow-code"):
+            text = self.skill(name)
+            self.assertNotIn("automatically authorizes", text, name)
+            for value in ("authorization_id", "revision", "operation manifest"):
+                self.assertIn(value, text, f"{name} missing {value}")
+
+    def test_end_to_end_authorization_contract_is_resume_safe(self):
+        readme = (ROOT / "README.md").read_text()
+        artifact = (ROOT / "artifact-contract.md").read_text()
+        flowctl = (ROOT / "flowctl-contract.md").read_text()
+
+        for value in (
+            "Requirement discussion remains the normal human product gate",
+            "one consolidated run authorization gate",
+            "same active `external_review` authorization ID and revision",
+            "retry and iBrain fallback do not create another human gate",
+            "changed scope or decision uses `flowctl authorization amend`",
+            "production replay decision reaches Integration",
+            "minimal stage-bound authorization gate",
+        ):
+            self.assertIn(value, readme)
+
+        for value in (
+            "authorization_id", "authorization revision", "operation manifest",
+            "Requirement authorization", "must not be treated as review authority",
+            "must not be treated as replay authority",
+        ):
+            self.assertIn(value, artifact)
+
+        for value in (
+            "authorization decide", "authorization amend", "authorization validate",
+            "same active authorization revision", "fresh single-use operation manifest",
+            "retry", "iBrain fallback", "resume", "must not re-prompt",
+        ):
+            self.assertIn(value, flowctl)
+
+    def test_spec_plan_code_share_external_authorization_revision_without_reprompting(self):
+        for name in ("flow-spec", "flow-plan", "flow-code"):
+            text = self.skill(name)
+            for value in (
+                "same active `external_review` authorization ID and revision",
+                "fresh controller-validated operation manifest that is single-use",
+                "must not re-prompt",
+                "flowctl authorization amend",
+            ):
+                self.assertIn(value, text, f"{name} missing {value}")
+
+        for name in ("flow-spec", "flow-plan", "flow-code"):
+            text = self.skill(name)
+            retry = text[text.index("Retry "):]
+            self.assertIn("not re-prompt", retry, name)
+            self.assertIn("iBrain fallback", retry, name)
+
+    def test_replay_decision_reaches_integration_as_controller_binding(self):
+        plan = self.skill("flow-plan")
+        integration = self.skill("flow-integration")
+        for value in (
+            "production_replay authorization ID and revision",
+            "controller-validated replay operation manifest",
+        ):
+            self.assertIn(value, plan)
+            self.assertIn(value, integration)
+        self.assertIn("SANITIZED_LOCAL_REPLAY", integration)
+        self.assertIn("SKIP_PRODUCTION_REPLAY", integration)
+        self.assertIn("must not ask for replay authorization again", integration)
+        self.assertIn("flowctl authorization amend", integration)
+
+    def test_direct_stage_invocation_uses_only_minimal_stage_bound_authorization_gate(self):
+        expected_kind = {
+            "flow-spec": "external_review",
+            "flow-plan": "external_review",
+            "flow-code": "external_review",
+            "flow-integration": "production_replay",
+        }
+        for name, kind in expected_kind.items():
+            text = self.skill(name)
+            for value in (
+                "Direct invocation authorization",
+                "minimal stage-bound authorization gate",
+                f"`{kind}`",
+                "controller-generated authorization ID and revision",
+                "operation manifest",
+                "must not imply authority for another stage",
+            ):
+                self.assertIn(value, text, f"{name} missing {value}")
+            self.assertIn("flowctl authorization decide", text)
+            self.assertIn("flowctl authorization amend", text)
+            if kind == "external_review":
+                self.assertIn(f'"allowed_stages":["{name}"]', text)
+
+        for name in ("cursor-review", "ibrain-review"):
+            text = (ROOT.parent / "skills" / name / "SKILL.md").read_text()
+            for value in (
+                "authorization_id", "revision", "controller-validated operation manifest",
+            ):
+                self.assertIn(value, text, f"{name} missing {value}")
+
+    def test_ibrain_fallback_reuses_authorization_and_snapshot_but_never_cursor_binding(self):
+        surfaces = {
+            "flow-run": self.skill("flow-run"),
+            "flow-spec": self.skill("flow-spec"),
+            "flow-plan": self.skill("flow-plan"),
+            "flow-code": self.skill("flow-code"),
+            "flow-contract": (ROOT / "flow-contract.md").read_text(),
+            "orchestration-contract": (ROOT / "orchestration-contract.md").read_text(),
+            "cursor-review": (ROOT.parent / "skills" / "cursor-review" / "SKILL.md").read_text(),
+            "ibrain-review": (ROOT.parent / "skills" / "ibrain-review" / "SKILL.md").read_text(),
+        }
+        for name, text in surfaces.items():
+            for value in (
+                "same active `authorization_id` and revision",
+                "same artifact snapshot",
+                "`backend=ibrain`",
+                "new controller-validated, single-use operation manifest/binding",
+                "must not reuse the Cursor binding",
+            ):
+                self.assertIn(value, text, f"{name} missing {value}")
+            self.assertNotIn("against the same binding", text, name)
 
     def test_code_and_unit_test_contract(self):
         text = self.skill("flow-code")
@@ -570,6 +720,30 @@ class WorkflowV2Tests(unittest.TestCase):
             "Success Signals", "integration evidence", "route every failure",
         ):
             self.assertIn(value, text)
+
+    def test_production_replay_skip_contract_runs_unaffected_scenarios_and_reports_gaps(self):
+        plan = self.skill("flow-plan")
+        integration = self.skill("flow-integration")
+        runner = self.skill("flow-run")
+        for value in (
+            "SKIP_PRODUCTION_REPLAY", "Plan trace", "production-derived data",
+            "synthetic or isolated test-environment data", "integration_scenarios",
+            "single-line JSON metadata", "complete expected scenario set",
+        ):
+            self.assertIn(value, plan)
+        for value in (
+            "SKIP_PRODUCTION_REPLAY", "SKIPPED_AUTHORIZED_REPLAY",
+            "PRODUCTION_REPLAY_GAP", "unaffected", "COMPLETE_WITH_DEFECT",
+            "zero-executed warning", "final report", "FAILED", "BLOCKED",
+            "Plan digest", "complete expected scenario set", "integration_results",
+            "controller derives", "status must match the signal",
+        ):
+            self.assertIn(value, integration)
+        for value in (
+            "legacy Plan checkpoint", "Plan revision and re-review",
+            "active `SKIP_PRODUCTION_REPLAY` authorization",
+        ):
+            self.assertIn(value, runner)
 
     def test_integration_supports_direct_real_service_testing(self):
         text = self.skill("flow-integration")

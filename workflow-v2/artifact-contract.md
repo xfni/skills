@@ -39,3 +39,9 @@ resolved_path: <absolute path>
 Any body-byte change increments `content_revision`, recomputes `content_digest`, and invalidates the approval region. Registration enforces monotonic revision and invalidates bound downstream artifacts and reviews. Moving an artifact preserves the exact body bytes, integrity digest, and approval binding while regenerating only the excluded path metadata for the new location; flowctl recomputes the body digest at the destination before accepting it.
 
 Roadmap BODY includes exactly one JSON-array field `target_milestones` in delivery order and one JSON-object field `milestone_dependencies`, whose keys and dependency values are members of that array. These fields contain every non-deferred milestone required by Intent. Flowctl validates the graph, chooses the first dependency-ready milestone, records completion from accepted Integration evidence, and alone decides whether to return to Spec or complete the run.
+
+## Authorization references
+
+Requirement authorization is product-scope approval. It must not be treated as review authority and must not be treated as replay authority. Likewise, an artifact's approval envelope, digest, path, or presence is never evidence of permission to transmit files or acquire production-derived data.
+
+Where a handoff or evidence record refers to an authorized external operation, record only the controller-issued `authorization_id`, authorization revision, and controller-validated operation manifest/binding ID. These references are audit links, not editable authority inside the artifact. Spec, Plan, and Code reuse the active external-review authorization revision but receive a fresh single-use manifest for each retry, revision, or backend attempt. Integration carries the active production-replay authorization reference and the exact replay manifest binding or the active skip decision. Artifact prose, reviewer output, or a copied manifest must not expand either authorization.

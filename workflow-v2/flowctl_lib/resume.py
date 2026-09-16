@@ -4,6 +4,7 @@ from pathlib import Path
 
 from .artifacts import KINDS, verify_artifact
 from .errors import FlowctlError
+from .integration_results import validate_integration_results_against_plan
 from .state import DEPENDENCIES, ORDER, artifact_key, commit_state, locked_state, validate_approval_authority
 from .snapshot import capture_snapshot
 
@@ -18,6 +19,40 @@ def _review_eligible_after_resume(attempt, artifact, recorded_snapshot=None, act
         and recorded_snapshot.get("snapshot_digest") == actual_snapshot.get("snapshot_digest")
         and attempt.get("snapshot_digest") == recorded_snapshot.get("snapshot_digest")
     )
+
+
+def _production_replay_gaps(artifacts):
+    gaps = []
+    for key, artifact in artifacts.items():
+        if artifact.get("type") != "integration" or not artifact.get("integration_results"):
+            continue
+        for gap in artifact["integration_results"]["gaps"]:
+            gaps.append({**gap, "artifact_key": key})
+    return gaps
+
+
+def _integration_result_valid(artifact, artifacts, state=None):
+    result = artifact.get("integration_results")
+    milestone = artifact.get("milestone_id")
+    plan = artifacts.get(f"plan:{milestone}") if milestone else None
+    if not plan:
+        return False
+    if result is None:
+        return plan.get('integration_scenarios') is None
+    try:
+        validate_integration_results_against_plan(result, plan)
+    except FlowctlError:
+        return False
+    if result["skipped_count"] or result["gaps"]:
+        if state is None:
+            return True
+        replay = state.get("authorizations", {}).get("production_replay", {})
+        return (
+            replay.get("status") == "GRANTED"
+            and replay.get("decision") == "SKIP_PRODUCTION_REPLAY"
+            and replay.get("mode") == "SKIP_PRODUCTION_REPLAY"
+        )
+    return True
 
 
 def _infer_key(path):
@@ -89,6 +124,9 @@ def resume_flow(issue_id, repo_root, inputs_path=None):
             if not artifact["approval"]["valid"] or not _deps_satisfied(artifact, valid):
                 invalid.append({"path": artifact["path"], "code": "UNBOUND_ARTIFACT"})
                 continue
+            if artifact["type"] == "integration" and not _integration_result_valid(artifact, valid):
+                invalid.append({"path": artifact["path"], "code": "INVALID_INTEGRATION_PLAN_BINDING"})
+                continue
             current = valid.get(actual_key)
             if current and current["revision"] == artifact["revision"] and current["digest"] != artifact["digest"]:
                 raise FlowctlError("AMBIGUOUS_CHECKPOINT", artifact_key=actual_key, revision=artifact["revision"])
@@ -120,6 +158,8 @@ def resume_flow(issue_id, repo_root, inputs_path=None):
 def reconcile_resume(state_path, discovery, expected_state_revision):
     """Atomically make the verified discovery chain the controller checkpoint."""
     with locked_state(state_path, expected_state_revision) as state:
+        from .replay import reject_unresolved_cleanup
+        reject_unresolved_cleanup(state)
         original_state = copy.deepcopy(state)
         if discovery["issue_id"] != state["issue_id"]:
             raise FlowctlError("ISSUE_MISMATCH")
@@ -155,6 +195,11 @@ def reconcile_resume(state_path, discovery, expected_state_revision):
                     continue
                 if not _deps_satisfied(artifact, artifacts):
                     artifacts.pop(key)
+                    continue
+                if artifact["type"] == "integration" and not _integration_result_valid(
+                    artifact, artifacts, state,
+                ):
+                    artifacts.pop(key)
         for artifact in artifacts.values():
             validate_approval_authority({**state, "artifacts": artifacts}, artifact)
         keep_reviews = {}
@@ -173,6 +218,10 @@ def reconcile_resume(state_path, discovery, expected_state_revision):
         state["artifacts"] = artifacts
         state["artifact_high_water"] = high_water_marks
         state["reviews"]["attempts"] = keep_reviews
+        state["open_gaps"] = [
+            gap for gap in state.get("open_gaps", [])
+            if gap.get("type") != "PRODUCTION_REPLAY_GAP" or not gap.get("artifact_key")
+        ] + _production_replay_gaps(artifacts)
         if not pending_route_back:
             state.pop("pending_signal", None)
         roadmap = artifacts.get("roadmap")

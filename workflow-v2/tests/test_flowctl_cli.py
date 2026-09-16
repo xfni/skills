@@ -4,11 +4,16 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "flowctl.py"
+sys.path.insert(0, str(ROOT))
+
+from flowctl_lib.cli import dispatch
+from flowctl_lib.errors import FlowctlError
 
 
 def artifact(path, kind="requirement", issue="BCS-710"):
@@ -92,3 +97,169 @@ class FlowctlCliTests(unittest.TestCase):
                     result["error"]["code"],
                     {"INVALID_HANDOFF_JSON", "HANDOFF_SCHEMA_INVALID"},
                 )
+
+    def test_authorization_decide_rejects_malformed_non_object_unknown_and_invalid_decisions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(["git", "init", "-b", "feature-BCS-710-flowctl", str(root)], check=True, capture_output=True)
+            state = root / ".ai" / "issue" / "BCS-710" / "flow-state.json"
+            self.run_cli(
+                "init", "--issue", "BCS-710", "--repo", root,
+                "--branch", "feature-BCS-710-flowctl", "--state", state,
+            )
+
+            invalid_cases = (
+                ("external_review", "not-json", "INVALID_AUTHORIZATION_JSON"),
+                ("external_review", json.dumps("GRANTED"), "AUTHORIZATION_DECISION_SCHEMA_INVALID"),
+                ("external_review", json.dumps(["GRANTED"]), "AUTHORIZATION_DECISION_SCHEMA_INVALID"),
+                ("external_review", json.dumps({"decision": "GRANTED"}), "AUTHORIZATION_DECISION_SCHEMA_INVALID"),
+                ("external_review", json.dumps({"decision": "GRANTED", "allowed_stages": []}), "AUTHORIZATION_DECISION_SCHEMA_INVALID"),
+                ("external_review", json.dumps({"decision": "GRANTED", "allowed_stages": ["flow-spec", "flow-spec"]}), "AUTHORIZATION_DECISION_SCHEMA_INVALID"),
+                ("external_review", json.dumps({"decision": "GRANTED", "allowed_stages": ["flow-integration"]}), "AUTHORIZATION_DECISION_SCHEMA_INVALID"),
+                ("external_review", json.dumps({"decision": "GRANTED", "extra": True}), "AUTHORIZATION_DECISION_SCHEMA_INVALID"),
+                ("external_review", json.dumps({"decision": True}), "AUTHORIZATION_DECISION_SCHEMA_INVALID"),
+                ("production_replay", json.dumps({"decision": "GRANTED"}), "AUTHORIZATION_DECISION_SCHEMA_INVALID"),
+                ("production_replay", json.dumps({"decision": "RAW_REPLAY"}), "AUTHORIZATION_DECISION_SCHEMA_INVALID"),
+                ("production_replay", json.dumps({"decision": "SKIP_PRODUCTION_REPLAY", "allowed_stages": ["flow-integration"]}), "AUTHORIZATION_DECISION_SCHEMA_INVALID"),
+            )
+            for kind, decision, expected_code in invalid_cases:
+                with self.subTest(kind=kind, decision=decision):
+                    result = self.run_cli(
+                        "authorization", "decide", "--state", state,
+                        "--kind", kind, "--decision", decision,
+                        "--expected-revision", 0, expected=2,
+                    )
+                    self.assertEqual(expected_code, result["error"]["code"])
+
+    def test_authorization_dispatch_rejects_boolean_expected_revision(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(["git", "init", "-b", "feature-BCS-710-flowctl", str(root)], check=True, capture_output=True)
+            state = root / ".ai" / "issue" / "BCS-710" / "flow-state.json"
+            self.run_cli(
+                "init", "--issue", "BCS-710", "--repo", root,
+                "--branch", "feature-BCS-710-flowctl", "--state", state,
+            )
+            args = SimpleNamespace(
+                command="authorization",
+                authorization_command="decide",
+                state=str(state),
+                kind="external_review",
+                decision=json.dumps({"decision": "GRANTED"}),
+                expected_revision=False,
+            )
+            with self.assertRaisesRegex(FlowctlError, "INVALID_EXPECTED_REVISION"):
+                dispatch(args)
+
+    def test_authorization_decide_is_idempotent_and_returns_authorization_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(["git", "init", "-b", "feature-BCS-710-flowctl", str(root)], check=True, capture_output=True)
+            state = root / ".ai" / "issue" / "BCS-710" / "flow-state.json"
+            self.run_cli(
+                "init", "--issue", "BCS-710", "--repo", root,
+                "--branch", "feature-BCS-710-flowctl", "--state", state,
+            )
+            decision = json.dumps({"decision": "SANITIZED_LOCAL_REPLAY"})
+
+            decided = self.run_cli(
+                "authorization", "decide", "--state", state,
+                "--kind", "production_replay", "--decision", decision,
+                "--expected-revision", 0,
+            )
+            authorization_id = decided["authorization"]["authorization_id"]
+            self.assertTrue(authorization_id)
+            self.assertEqual(authorization_id, decided["authorization_id"])
+            self.assertEqual("SANITIZED_LOCAL_REPLAY", decided["authorization"]["decision"])
+            self.assertEqual(1, decided["state"]["state_revision"])
+
+            repeated = self.run_cli(
+                "authorization", "decide", "--state", state,
+                "--kind", "production_replay", "--decision", decision,
+                "--expected-revision", 1,
+            )
+            self.assertEqual(authorization_id, repeated["authorization_id"])
+            self.assertEqual(1, repeated["state"]["state_revision"])
+
+    def test_external_review_cli_persists_stage_scope_and_requires_amendment_to_change_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(["git", "init", "-b", "feature-BCS-710-flowctl", str(root)], check=True, capture_output=True)
+            state = root / ".ai" / "issue" / "BCS-710" / "flow-state.json"
+            self.run_cli(
+                "init", "--issue", "BCS-710", "--repo", root,
+                "--branch", "feature-BCS-710-flowctl", "--state", state,
+            )
+            direct_spec = json.dumps({"decision": "GRANTED", "allowed_stages": ["flow-spec"]})
+            granted = self.run_cli(
+                "authorization", "decide", "--state", state,
+                "--kind", "external_review", "--decision", direct_spec,
+                "--expected-revision", 0,
+            )
+            self.assertEqual(["flow-spec"], granted["authorization"]["allowed_stages"])
+            expanded = json.dumps({
+                "decision": "GRANTED",
+                "allowed_stages": ["flow-spec", "flow-plan", "flow-code"],
+            })
+            rejected = self.run_cli(
+                "authorization", "decide", "--state", state,
+                "--kind", "external_review", "--decision", expanded,
+                "--expected-revision", 1, expected=2,
+            )
+            self.assertEqual("AUTHORIZATION_AMENDMENT_REQUIRED", rejected["error"]["code"])
+
+    def test_authorization_amend_opens_bound_gate_then_decide_creates_new_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(["git", "init", "-b", "feature-BCS-710-flowctl", str(root)], check=True, capture_output=True)
+            state = root / ".ai" / "issue" / "BCS-710" / "flow-state.json"
+            self.run_cli(
+                "init", "--issue", "BCS-710", "--repo", root,
+                "--branch", "feature-BCS-710-flowctl", "--state", state,
+            )
+            granted = self.run_cli(
+                "authorization", "decide", "--state", state,
+                "--kind", "external_review", "--decision", json.dumps({
+                    "decision": "GRANTED", "allowed_stages": ["flow-spec", "flow-plan", "flow-code"],
+                }),
+                "--expected-revision", 0,
+            )
+            old_id = granted["authorization_id"]
+
+            pending = self.run_cli(
+                "authorization", "amend", "--state", state,
+                "--kind", "external_review", "--decision", json.dumps({
+                    "decision": "DENIED", "allowed_stages": ["flow-spec", "flow-plan", "flow-code"],
+                }),
+                "--expected-revision", 1,
+            )
+            self.assertEqual(old_id, pending["authorization_id"])
+            self.assertEqual("AMENDMENT_PENDING", pending["authorization"]["status"])
+            self.assertEqual({
+                "decision": "DENIED", "allowed_stages": ["flow-spec", "flow-plan", "flow-code"],
+            }, pending["authorization"]["proposed_decision"])
+
+            amended = self.run_cli(
+                "authorization", "decide", "--state", state,
+                "--kind", "external_review", "--decision", json.dumps({
+                    "decision": "DENIED", "allowed_stages": ["flow-spec", "flow-plan", "flow-code"],
+                }),
+                "--expected-revision", 2,
+            )
+            self.assertNotEqual(old_id, amended["authorization_id"])
+            self.assertEqual("DENIED", amended["authorization"]["status"])
+            self.assertEqual(2, amended["authorization"]["revision"])
+
+    def test_authorization_decision_schema_is_shipped_with_exact_choices(self):
+        schema = json.loads((ROOT / "schemas" / "authorization-decision.schema.json").read_text())
+        self.assertEqual(2, len(schema["oneOf"]))
+        external, replay = schema["oneOf"]
+        self.assertEqual(["decision", "allowed_stages"], external["required"])
+        self.assertEqual(["DENIED", "GRANTED"], external["properties"]["decision"]["enum"])
+        self.assertEqual(["flow-spec", "flow-plan", "flow-code"],
+                         external["properties"]["allowed_stages"]["items"]["enum"])
+        self.assertTrue(external["properties"]["allowed_stages"]["uniqueItems"])
+        self.assertEqual(1, external["properties"]["allowed_stages"]["minItems"])
+        self.assertEqual(["decision"], replay["required"])
+        self.assertEqual(["SANITIZED_LOCAL_REPLAY", "SKIP_PRODUCTION_REPLAY"],
+                         replay["properties"]["decision"]["enum"])

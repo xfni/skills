@@ -36,7 +36,7 @@ All workflow skills are explicit-only. Optional requirement methods are orchestr
 | [git-commit-convention](./skills/git-commit-convention/) | Keeping a local commit scoped, documented, and in the required Chinese commit format. | Independent. Requires a Git repository and an issue identifier for a commit. |
 | [coding-guidelines](./skills/coding-guidelines/) | Writing or reviewing code without speculative abstractions, scope creep, unsafe boundaries, or half-finished migrations. | Baseline for implementation and review. **Required** by `spec-plan-to-code`. |
 | [independent-review](./skills/independent-review/) | Shared evidence, scope, finding, and re-review standard for design, implementation, and concurrency profiles. | The caller selects the profile, `subagent` or `cursor` backend, model, and effort. It never makes those routing decisions. |
-| [cursor-review](./skills/cursor-review/) | Checking the Cursor connection and running one bounded read-only repository review. | Requires explicit selection, `cursor_sdk`, and a Cursor API key. Calling workflows own the profile and finding disposition. |
+| [cursor-review](./skills/cursor-review/) | Checking whether Cursor can accept one bounded byte-only review with local tools and implicit indexing disabled. | Requires explicit selection and a controller-bound request. The current adapter fails closed because the Cursor bridge cannot prove both safety capabilities. |
 | [requirement-council](./skills/requirement-council/) | Running a contextual agent-to-agent requirement discussion and presenting evidence-backed choices, risks, and missing facts. | **Optional, Codex-only** stage with the root plus two child roles. It writes candidate `requirement.md`; `$requirement-to-intent` owns the handoff. |
 | [requirement-clarification](./skills/requirement-clarification/) | Aligning an existing `requirement.md` with the human through `grilling` or a built-in fallback. | Optional before intent. It updates the requirement revision but never creates intent or roadmap. |
 | [requirement-to-intent](./skills/requirement-to-intent/) | Choosing a requirement path and producing the authoritative, human-confirmed `intent.md`. | Required gate before roadmap. It can orchestrate Council, clarification, both, or direct discussion. |
@@ -56,8 +56,7 @@ Dependency terms:
 |---|---|
 | [Claude Code](https://claude.ai/code) with plugin support | Installing this repository as a Claude Code plugin. |
 | [Codex](https://openai.com/codex/) | Installing or linking selected directories into `~/.codex/skills/`. Explicit-only workflow metadata is included. |
-| [Cursor](https://cursor.com/) plus a Python environment where `cursor_sdk` is available | `$cursor-review`, optionally invoked by review workflows. Not needed for the normal workflow. |
-| Cursor API key at `~/.cursor-review/API_KEY` | Only when invoking `$cursor-review`. Keep the key out of repositories and prompts. |
+| A controller-approved external-review backend | `$cursor-review` is optional and currently unavailable until Cursor can prove both disabled local tools and disabled implicit indexing. Flow may use its authorized runtime fallback. |
 | `grilling` skill | Optional engine used by `requirement-clarification`; that skill provides a built-in fallback when it is absent. |
 | `brainstorming` guidance | Optional source for richer alternative generation; Requirement Council includes the required comparison core and does not depend on it. |
 | `pms-issue-reader` skill and PMS access | Used once by `requirement-to-intent` after issue validation; sandboxed environments may prompt for read-only network permission. |
@@ -118,7 +117,7 @@ This Skill is intentionally absent from the Claude Code plugin. Its two child Ag
 
 ### Cursor review setup (optional)
 
-`$cursor-review` owns the bounded, read-only runner. Authorize and run `python skills/cursor-review/scripts/install_cursor_sdk.py` once to install the pinned SDK in `~/.codex/runtime/cursor-review`; the runner always re-executes with that dedicated Python. Generate an API key in Cursor, save only that key in `~/.cursor-review/API_KEY`, then run `scripts/cursor_review.py --check`. It defaults to `grok-4.6` with `high` effort and never grants Cursor write or shell tools.
+`$cursor-review` accepts only a private, controller-materialized request file plus `--no-tools` and `--expected-request-digest`. Before any request bytes or credentials are read, the controller executes pinned captured adapter bytes in isolated Python and requires a capability result proving both local tools and implicit indexing are disabled. The current Cursor bridge cannot prove that contract, so `scripts/cursor_review.py --check-capabilities` returns a framed `BACKEND_UNAVAILABLE` result and Flow applies its authorized runtime-fallback policy. Do not install a dedicated runtime, pass an API key file, or expose a repository workspace as a substitute for that proof.
 
 ## License
 

@@ -1,4 +1,5 @@
 from pathlib import Path
+import hashlib
 import os
 import re
 import subprocess
@@ -79,58 +80,70 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
             self.assertIn(f"name: {name}", skill.read_text())
             self.assertIn("allow_implicit_invocation: false", metadata.read_text())
 
-    def test_cursor_review_has_single_portable_read_only_runner(self):
+    def test_cursor_review_has_single_portable_fail_closed_byte_adapter(self):
         forbidden = ("/Users/nixiaofeng",)
         script = SKILLS_ROOT / CURSOR_REVIEW_SKILL / "scripts" / "cursor_review.py"
         text = script.read_text()
         self.assertTrue(script.is_file())
-        self.assertIn("--api-key-file", text)
-        self.assertIn('DEFAULT_API_KEY_FILE = Path.home() / ".cursor-review" / "API_KEY"', text)
-        self.assertIn('DEFAULT_MODEL = "grok-4.6"', text)
-        self.assertIn('DEFAULT_EFFORT = "high"', text)
-        self.assertIn("INCOMPLETE: Cursor SDK is unavailable", text)
-        self.assertIn("INCOMPLETE: Cursor API key is not configured", text)
-        self.assertIn('mode="plan"', text)
-        self.assertIn('tools=READ_ONLY_TOOLS', text)
-        self.assertEqual(["read", "grep", "glob", "ls"], __import__("ast").literal_eval(re.search(r"READ_ONLY_TOOLS = (\[[^\n]+\])", text).group(1)))
+        self.assertIn("Cursor byte-review adapter", text)
+        self.assertIn("--no-tools", text)
+        self.assertIn("--expected-request-digest", text)
+        self.assertIn("--check-capabilities", text)
+        self.assertIn('default="grok-4.6"', text)
+        self.assertIn('default="high"', text)
+        self.assertIn('emit_error("BACKEND_UNAVAILABLE"', text)
+        self.assertNotIn("--api-key-file", text)
+        self.assertNotIn("READ_ONLY_TOOLS", text)
+        self.assertNotIn("LocalAgentOptions", text)
         for value in forbidden:
             self.assertNotIn(value, text)
         for name in CURSOR_SKILLS:
             self.assertFalse((SKILLS_ROOT / name / "scripts" / "cursor_review.py").exists())
 
-    def test_cursor_review_reports_missing_sdk_without_traceback(self):
-        script = SKILLS_ROOT / CURSOR_REVIEW_SKILL / "scripts" / "cursor_review.py"
-        env = dict(os.environ, CURSOR_REVIEW_RUNTIME_PYTHON=sys.executable)
+    def test_cursor_review_capability_probe_has_no_dedicated_runtime_protocol(self):
+        skill = SKILLS_ROOT / CURSOR_REVIEW_SKILL
+        self.assertFalse((skill / "scripts" / "install_cursor_sdk.py").exists())
+        self.assertFalse((skill / "requirements.txt").exists())
+        script = skill / "scripts" / "cursor_review.py"
+        text = script.read_text()
+        self.assertNotIn('parser.add_argument("--check"', text)
+        self.assertNotIn("CURSOR_REVIEW_RUNTIME_PYTHON", text)
+        self.assertNotIn("SDK_UNAVAILABLE", text)
+        self.assertNotIn("dedicated runtime", text)
         result = subprocess.run(
-            [sys.executable, str(script), "--check"],
+            [sys.executable, str(script), "--check-capabilities"],
             text=True,
             capture_output=True,
             check=False,
-            env=env,
         )
-        self.assertIn(result.returncode, (0, 2))
-        self.assertNotIn("Traceback", result.stderr + result.stdout)
-        if result.returncode == 2:
-            self.assertIn("INCOMPLETE:", result.stderr + result.stdout)
+        output = result.stderr + result.stdout
+        self.assertEqual(2, result.returncode)
+        self.assertEqual(1, output.count("FLOW_REVIEW_ERROR_BEGIN"))
+        self.assertEqual(1, output.count("FLOW_REVIEW_ERROR_END"))
+        self.assertIn('"code": "BACKEND_UNAVAILABLE"', output)
+        self.assertNotIn("Traceback", output)
 
-    def test_cursor_review_uses_a_dedicated_runtime(self):
+    def test_cursor_review_controller_pins_captured_adapter_bytes(self):
         skill = SKILLS_ROOT / CURSOR_REVIEW_SKILL
-        runner = (skill / "scripts" / "cursor_review.py").read_text()
-        installer = skill / "scripts" / "install_cursor_sdk.py"
-        requirements = skill / "requirements.txt"
-
-        self.assertTrue(installer.is_file())
-        self.assertTrue(requirements.is_file())
-        self.assertIn("cursor-sdk==", requirements.read_text())
-        self.assertIn('"runtime" / "cursor-review"', runner)
-        self.assertIn("os.execv", runner)
-        self.assertIn("CURSOR_REVIEW_RUNTIME_PYTHON", runner)
-        self.assertIn("venv.EnvBuilder", installer.read_text())
-        self.assertIn("requirements.txt", installer.read_text())
-
+        runner = skill / "scripts" / "cursor_review.py"
         instructions = (skill / "SKILL.md").read_text()
-        self.assertIn("install_cursor_sdk.py", instructions)
-        self.assertIn("dedicated runtime", instructions)
+        self.assertIn("pinned adapter content digest", instructions)
+        self.assertIn("captured adapter bytes in isolated Python", instructions)
+        self.assertIn("Self-reported capabilities from an arbitrary script are not trusted", instructions)
+
+        workflow_root = str(ROOT / "workflow-v2")
+        sys.path.insert(0, workflow_root)
+        try:
+            from flowctl_lib.errors import FlowctlError
+            from flowctl_lib.reviews import trusted_adapter_source
+            self.assertEqual(runner.read_text(), trusted_adapter_source(runner, "cursor"))
+            with tempfile.TemporaryDirectory() as temp_dir:
+                tampered = Path(temp_dir) / "cursor_review.py"
+                tampered.write_text(runner.read_text() + "\n# tampered\n")
+                with self.assertRaises(FlowctlError):
+                    trusted_adapter_source(tampered, "cursor")
+        finally:
+            sys.path.remove(workflow_root)
 
     def test_cursor_review_is_registered_and_explicit_only(self):
         claude_manifest = (ROOT / ".claude-plugin" / "plugin.json").read_text()
@@ -141,29 +154,29 @@ class AiNativeWorkflowSkillTests(unittest.TestCase):
         self.assertIn("allow_implicit_invocation: false", metadata)
         self.assertIn("$cursor-review", metadata)
 
-    def test_cursor_review_reports_invalid_input_without_traceback(self):
+    def test_cursor_review_fails_closed_before_read_with_framed_error(self):
         script = SKILLS_ROOT / CURSOR_REVIEW_SKILL / "scripts" / "cursor_review.py"
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
-            (temp / "cursor_sdk.py").write_text(
-                "AgentOptions=Client=LocalAgentOptions=ModelParameterValue=ModelSelection=SendOptions=object\n"
-            )
-            key = temp / "API_KEY"
-            key.write_text("test-key")
-            prompt = temp / "brief.md"
-            prompt.write_text("review")
-            env = dict(os.environ, PYTHONPATH=temp_dir)
-            env["CURSOR_REVIEW_RUNTIME_PYTHON"] = sys.executable
+            request = temp / "request.json"
+            lure = "NEVER_READ_REQUEST_LURE"
+            request.write_text(lure)
+            expected = "sha256:" + hashlib.sha256(b"different bound bytes").hexdigest()
             result = subprocess.run(
-                [sys.executable, str(script), str(temp / "missing-repo"), str(prompt), "--api-key-file", str(key)],
+                [sys.executable, str(script), str(request), "--no-tools",
+                 "--expected-request-digest", expected],
                 text=True,
                 capture_output=True,
                 check=False,
-                env=env,
             )
         self.assertEqual(2, result.returncode)
-        self.assertIn("INCOMPLETE: Cursor review input is unavailable", result.stderr + result.stdout)
-        self.assertNotIn("Traceback", result.stderr + result.stdout)
+        output = result.stderr + result.stdout
+        self.assertEqual(1, output.count("FLOW_REVIEW_ERROR_BEGIN"))
+        self.assertEqual(1, output.count("FLOW_REVIEW_ERROR_END"))
+        self.assertIn('"code": "BACKEND_UNAVAILABLE"', output)
+        self.assertNotIn("Traceback", output)
+        self.assertNotIn(lure, output)
+        self.assertNotIn(str(request), output)
 
     def test_readmes_document_all_workflow_skills(self):
         for readme in (ROOT / "README.md", ROOT / "README.zh.md"):

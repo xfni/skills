@@ -7,6 +7,10 @@ from .errors import FlowctlError
 from .state import audit_state, commit_state, locked_state, reject_if_paused
 from .snapshot import verify_recorded_snapshot
 from .reviews import _unique_object, reject_if_unclassified_exhausted
+from .integration_results import (
+    validate_integration_results_against_plan,
+    validate_production_replay_gap,
+)
 
 
 TRANSITIONS = {
@@ -19,6 +23,23 @@ TRANSITIONS = {
     "flow-integration": "complete",
 }
 REVIEWED_STAGES = {"flow-spec", "flow-plan", "flow-code"}
+
+
+def _validate_handoff_gap(gap):
+    if not isinstance(gap, dict):
+        raise FlowctlError("HANDOFF_SCHEMA_INVALID")
+    if gap.get("type") == "PRODUCTION_REPLAY_GAP":
+        replay_gap = dict(gap)
+        artifact_key = replay_gap.pop("artifact_key", None)
+        if artifact_key is not None and (not isinstance(artifact_key, str) or not artifact_key):
+            raise FlowctlError("HANDOFF_SCHEMA_INVALID")
+        validate_production_replay_gap(replay_gap)
+        return
+    if gap.get("type") == "EXTERNAL_REVIEW_GAP":
+        if not isinstance(gap.get("artifact_key"), str) or not gap["artifact_key"]:
+            raise FlowctlError("HANDOFF_SCHEMA_INVALID")
+        return
+    raise FlowctlError("HANDOFF_SCHEMA_INVALID")
 
 
 def _read_handoff(path):
@@ -35,6 +56,7 @@ def _read_handoff(path):
         "schema_version": int, "signal": str, "issue_id": str,
         "run_id": str, "from_stage": str, "next_stage": str, "artifact_key": str,
     }
+    optional = {"completion_quality", "open_gaps"}
     if set(required) - set(data):
         raise FlowctlError("HANDOFF_SCHEMA_INVALID", missing=sorted(set(required) - set(data)))
     if any(not isinstance(data[key], expected) for key, expected in required.items()):
@@ -43,14 +65,26 @@ def _read_handoff(path):
         raise FlowctlError("HANDOFF_SCHEMA_INVALID")
     if data["schema_version"] != 1 or data["signal"] != "FLOW_RUN_HANDOFF":
         raise FlowctlError("HANDOFF_SCHEMA_INVALID")
-    if set(data) != set(required):
-        raise FlowctlError("HANDOFF_SCHEMA_INVALID", unexpected=sorted(set(data) - set(required)))
+    if not set(data).issubset(set(required) | optional):
+        raise FlowctlError("HANDOFF_SCHEMA_INVALID", unexpected=sorted(set(data) - set(required) - optional))
     if any(not data[key] for key in ("issue_id", "run_id", "artifact_key")):
         raise FlowctlError("HANDOFF_SCHEMA_INVALID")
     if data["from_stage"] not in TRANSITIONS:
         raise FlowctlError("HANDOFF_SCHEMA_INVALID")
     if data["next_stage"] not in {"auto", *TRANSITIONS.values()}:
         raise FlowctlError("HANDOFF_SCHEMA_INVALID")
+    if set(data) & optional:
+        if set(data) & optional != optional or data["from_stage"] != "flow-integration":
+            raise FlowctlError("HANDOFF_SCHEMA_INVALID")
+        if data["completion_quality"] not in {"PASSED", "COMPLETE_WITH_DEFECT"}:
+            raise FlowctlError("HANDOFF_SCHEMA_INVALID")
+        if not isinstance(data["open_gaps"], list):
+            raise FlowctlError("HANDOFF_SCHEMA_INVALID")
+        try:
+            for gap in data["open_gaps"]:
+                _validate_handoff_gap(gap)
+        except FlowctlError as exc:
+            raise FlowctlError("HANDOFF_SCHEMA_INVALID") from exc
     return data
 
 
@@ -132,13 +166,15 @@ def accept_handoff(state_path, handoff_path, expected_state_revision):
                 cursor_failures = [
                     item for item in state["reviews"]["attempts"].values()
                     if item.get("artifact_key") == handoff["artifact_key"]
-                    and item.get("backend") == "cursor" and item.get("classification") == "RUN_ERROR"
+                    and item.get("backend") == "cursor"
+                    and item.get("classification") in {"RUN_ERROR", "PROTOCOL_ERROR"}
                     and item.get("artifact_digest") == artifact["digest"] and item.get("eligible", True)
                 ]
                 ibrain_failures = [
                     item for item in state["reviews"]["attempts"].values()
                     if item.get("artifact_key") == handoff["artifact_key"]
-                    and item.get("backend") == "ibrain" and item.get("classification") == "RUN_ERROR"
+                    and item.get("backend") == "ibrain"
+                    and item.get("classification") in {"RUN_ERROR", "PROTOCOL_ERROR"}
                     and item.get("artifact_digest") == artifact["digest"] and item.get("eligible", True)
                 ]
                 if len(cursor_failures) != 2 or len(ibrain_failures) != 2:
@@ -158,6 +194,35 @@ def accept_handoff(state_path, handoff_path, expected_state_revision):
             milestone = artifact.get("milestone_id")
             if not milestone or milestone != state.get("active_milestone"):
                 raise FlowctlError("MILESTONE_NOT_ACTIVE")
+            integration_results = current.get("integration_results")
+            from .integration_results import require_integration_results
+            require_integration_results(current, state.get('artifacts', {}).get(f'plan:{milestone}'))
+            durable_gaps = list(state.get("open_gaps", []))
+            if integration_results:
+                plan = state.get("artifacts", {}).get(f"plan:{milestone}")
+                if not plan:
+                    raise FlowctlError("INTEGRATION_PLAN_BINDING_MISMATCH")
+                validate_integration_results_against_plan(integration_results, plan)
+                scenario_quality = integration_results["status"]
+                if scenario_quality == "COMPLETE_WITH_DEFECT":
+                    replay = state.get("authorizations", {}).get("production_replay", {})
+                    if (replay.get("status") != "GRANTED"
+                            or replay.get("decision") != "SKIP_PRODUCTION_REPLAY"
+                            or replay.get("mode") != "SKIP_PRODUCTION_REPLAY"):
+                        raise FlowctlError("UNAUTHORIZED_PRODUCTION_REPLAY_SKIP")
+                for gap in integration_results["gaps"]:
+                    durable_gap = {**gap, "artifact_key": handoff["artifact_key"]}
+                    if durable_gap not in durable_gaps:
+                        durable_gaps.append(durable_gap)
+            else:
+                scenario_quality = current["approval"]["status"]
+            expected_quality = "COMPLETE_WITH_DEFECT" if durable_gaps else scenario_quality
+            if ((durable_gaps or handoff.get("completion_quality") is not None)
+                    and (handoff.get("completion_quality") != expected_quality
+                         or handoff.get("open_gaps") != durable_gaps)):
+                raise FlowctlError("INTEGRATION_HANDOFF_MISMATCH")
+            state["open_gaps"] = durable_gaps
+            completion_quality = expected_quality
             state["milestones"][milestone]["status"] = "completed"
             ready = _ready_milestones(state)
             if ready:
@@ -179,6 +244,7 @@ def accept_handoff(state_path, handoff_path, expected_state_revision):
             "current_stage": state["current_stage"], "next_action": state["pending_action"],
             "active_milestone": state.get("active_milestone"),
             "completion_quality": completion_quality,
+            "open_gaps": state.get("open_gaps", []),
         }
 
 

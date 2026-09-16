@@ -4,10 +4,15 @@ from pathlib import Path
 import sys
 
 from .artifacts import verify_artifact
+from .authorizations import (
+    EXTERNAL_REVIEW_STAGES,
+    begin_authorization_amendment,
+    decide_authorization,
+)
 from .errors import FlowctlError
 from .handoff import accept_handoff
 from .resume import reconcile_resume, resume_flow
-from .reviews import begin_review, run_cursor_review, run_ibrain_review, submit_review
+from .reviews import begin_review, repair_review_attempt, run_cursor_review, run_ibrain_review, submit_review
 from .snapshot import record_snapshot
 from .signals import record_signal
 from .state import audit_state, initialize_state, read_consistent_state, register_artifact, update_coder_state, validate_admission
@@ -68,6 +73,9 @@ def _parser():
     cursor.add_argument("--effort", default="high")
     cursor.add_argument("--timeout-seconds", type=int, default=960)
     cursor.add_argument("--expected-revision", required=True, type=int)
+    cursor_binding = cursor.add_mutually_exclusive_group()
+    cursor_binding.add_argument('--binding-id')
+    cursor_binding.add_argument('--manifest')
     ibrain = review_commands.add_parser("ibrain")
     ibrain.add_argument("--state", required=True)
     ibrain.add_argument("--artifact-key", required=True)
@@ -75,6 +83,17 @@ def _parser():
     ibrain.add_argument("--runner", required=True)
     ibrain.add_argument("--timeout-seconds", type=int, default=960)
     ibrain.add_argument("--expected-revision", required=True, type=int)
+    ibrain_binding = ibrain.add_mutually_exclusive_group()
+    ibrain_binding.add_argument('--binding-id')
+    ibrain_binding.add_argument('--manifest')
+    repair = review_commands.add_parser("repair-classification")
+    repair.add_argument("--state", required=True)
+    repair.add_argument("--attempt", required=True)
+    repair.add_argument(
+        "--kind", required=True,
+        choices=("unknown_backend_failure", "duplicate_identical_frames"),
+    )
+    repair.add_argument("--expected-revision", required=True, type=int)
 
     handoff = commands.add_parser("handoff")
     handoff_commands = handoff.add_subparsers(dest="handoff_command", required=True)
@@ -103,6 +122,27 @@ def _parser():
     record.add_argument("--state", required=True)
     record.add_argument("--payload", required=True)
     record.add_argument("--expected-revision", required=True, type=int)
+
+    authorization = commands.add_parser("authorization")
+    authorization_commands = authorization.add_subparsers(dest="authorization_command", required=True)
+    validate = authorization_commands.add_parser('validate')
+    validate.add_argument('--state', required=True)
+    validate.add_argument('--kind', required=True, choices=('external_review', 'production_replay'))
+    validate.add_argument('--manifest', required=True)
+    validate.add_argument('--expected-revision', required=True, type=int)
+    for name in ("decide", "amend"):
+        command = authorization_commands.add_parser(name)
+        command.add_argument("--state", required=True)
+        command.add_argument("--kind", required=True, choices=("external_review", "production_replay"))
+        command.add_argument("--decision", required=True)
+        command.add_argument("--expected-revision", required=True, type=int)
+    replay = commands.add_parser('replay')
+    replay_commands = replay.add_subparsers(dest='replay_command', required=True)
+    for name in ('validate', 'run', 'cleanup'):
+        command = replay_commands.add_parser(name)
+        command.add_argument('--state', required=True)
+        command.add_argument('--expected-revision', required=True, type=int)
+        command.add_argument('--manifest' if name == 'validate' else '--binding-id', required=True)
     return parser
 
 
@@ -114,6 +154,49 @@ def _validate_command_admission(state_path):
     state = read_consistent_state(state_path)
     validate_admission(state)
     return state
+
+
+def _parse_authorization_decision(raw, kind):
+    try:
+        decision = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise FlowctlError("INVALID_AUTHORIZATION_JSON") from exc
+    if not isinstance(decision, dict):
+        raise FlowctlError("AUTHORIZATION_DECISION_SCHEMA_INVALID")
+    expected = (
+        {"decision", "allowed_stages"}
+        if kind == "external_review"
+        else {"decision"}
+    )
+    if set(decision) != expected:
+        raise FlowctlError("AUTHORIZATION_DECISION_SCHEMA_INVALID")
+    value = decision["decision"]
+    allowed = (
+        {"GRANTED", "DENIED"}
+        if kind == "external_review"
+        else {"SANITIZED_LOCAL_REPLAY", "SKIP_PRODUCTION_REPLAY"}
+    )
+    if type(value) is not str or value not in allowed:
+        raise FlowctlError("AUTHORIZATION_DECISION_SCHEMA_INVALID")
+    if kind == "external_review":
+        stages = decision["allowed_stages"]
+        if (not isinstance(stages, list) or not stages
+                or any(type(stage) is not str or stage not in EXTERNAL_REVIEW_STAGES
+                       for stage in stages)
+                or len(stages) != len(set(stages))):
+            raise FlowctlError("AUTHORIZATION_DECISION_SCHEMA_INVALID")
+    return decision
+
+
+def _authorization_result(state, kind):
+    authorization = state["authorizations"][kind]
+    return {
+        "ok": True,
+        "authorization_id": authorization["authorization_id"],
+        "authorization_revision": authorization["revision"],
+        "authorization": authorization,
+        "state": state,
+    }
 
 
 def dispatch(args):
@@ -157,6 +240,7 @@ def dispatch(args):
         value = run_cursor_review(
             args.state, args.artifact_key, args.prompt, args.runner,
             args.model, args.effort, args.timeout_seconds, args.expected_revision,
+            args.binding_id, args.manifest,
         )
         return {"ok": True, "review": value}
     if args.command == "review" and args.review_command == "ibrain":
@@ -164,6 +248,13 @@ def dispatch(args):
         value = run_ibrain_review(
             args.state, args.artifact_key, args.prompt, args.runner,
             args.timeout_seconds, args.expected_revision,
+            args.binding_id, args.manifest,
+        )
+        return {"ok": True, "review": value}
+    if args.command == "review" and args.review_command == "repair-classification":
+        _validate_command_admission(args.state)
+        value = repair_review_attempt(
+            args.state, args.attempt, args.kind, args.expected_revision,
         )
         return {"ok": True, "review": value}
     if args.command == "handoff" and args.handoff_command == "accept":
@@ -178,6 +269,40 @@ def dispatch(args):
     if args.command == "signal" and args.signal_command == "record":
         _validate_command_admission(args.state)
         return {"ok": True, **record_signal(args.state, args.payload, args.expected_revision)}
+    if args.command == 'replay':
+        from .replay import validate_replay_manifest, run_replay, recover_replay_cleanup
+        _validate_command_admission(args.state)
+        if args.replay_command == 'validate':
+            return {'ok': True, **validate_replay_manifest(args.state, args.manifest, args.expected_revision)}
+        if args.replay_command == 'cleanup':
+            result = recover_replay_cleanup(args.state, args.binding_id, args.expected_revision)
+            return {'ok': result['status'] == 'PASSED', **result}
+        result = run_replay(args.state, args.binding_id, args.expected_revision)
+        return {'ok': result['status'] == 'PASSED', **result}
+    if args.command == "authorization":
+        if (isinstance(args.expected_revision, bool)
+                or not isinstance(args.expected_revision, int)
+                or args.expected_revision < 0):
+            raise FlowctlError("INVALID_EXPECTED_REVISION")
+        _validate_command_admission(args.state)
+        if args.authorization_command == 'validate':
+            if args.kind == 'production_replay':
+                from .replay import validate_replay_manifest
+                return {'ok': True, **validate_replay_manifest(args.state, args.manifest, args.expected_revision)}
+            from .review_package import validate_review_manifest
+            return {'ok': True, **validate_review_manifest(args.state, args.manifest, args.expected_revision)}
+        decision = _parse_authorization_decision(args.decision, args.kind)
+        if args.authorization_command == "decide":
+            state = decide_authorization(
+                args.state, args.kind, decision, args.expected_revision,
+            )
+        elif args.authorization_command == "amend":
+            state = begin_authorization_amendment(
+                args.state, args.kind, decision, args.expected_revision,
+            )
+        else:
+            raise FlowctlError("UNSUPPORTED_COMMAND")
+        return _authorization_result(state, args.kind)
     raise FlowctlError("UNSUPPORTED_COMMAND")
 
 
@@ -191,4 +316,4 @@ def main(argv=None):
         print(json.dumps({"ok": False, "error": {"code": "FLOWCTL_RUNTIME_ERROR", "message": str(exc)}}, ensure_ascii=False, sort_keys=True))
         return 2
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
-    return 0
+    return 0 if result.get('ok', True) else 2

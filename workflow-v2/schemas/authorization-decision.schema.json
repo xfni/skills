@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Flow v2 authorization decision",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision", "allowed_stages"],
+      "properties": {
+        "decision": {"enum": ["DENIED", "GRANTED"]},
+        "allowed_stages": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"enum": ["flow-spec", "flow-plan", "flow-code"]}
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["decision"],
+      "properties": {
+        "decision": {
+          "enum": ["SANITIZED_LOCAL_REPLAY", "SKIP_PRODUCTION_REPLAY"]
+        }
+      }
+    }
+  ]
+}

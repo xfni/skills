@@ -36,7 +36,7 @@ flowchart LR
 | [git-commit-convention](./skills/git-commit-convention/) | 让本地提交保持需求范围清晰、关联文档完整，并遵循中文提交信息格式。 | 独立使用。需要 Git 仓库；提交时需要 issue 编号。 |
 | [coding-guidelines](./skills/coding-guidelines/) | 编码与审阅时避免推测性抽象、范围蔓延、不安全边界和半迁移。 | 实现与审阅的基线。`spec-plan-to-code` **必须依赖**。 |
 | [independent-review](./skills/independent-review/) | 统一设计、实现和并发 profile 的证据、范围、发现与复审标准。 | 调用方选择 profile、`subagent` 或 `cursor`、模型与思考强度；本技能不做路由决定。 |
-| [cursor-review](./skills/cursor-review/) | 检查 Cursor 连接并执行一次有边界的只读仓库审阅。 | 必须显式选择，并依赖 `cursor_sdk` 与 Cursor API key；调用方负责 profile 和发现处置。 |
+| [cursor-review](./skills/cursor-review/) | 检查 Cursor 是否能在禁用本地工具和隐式索引的前提下执行一次有边界的纯字节审阅。 | 必须显式选择并使用控制器绑定请求。当前适配器因 Cursor bridge 无法证明两项安全能力而 fail closed。 |
 | [requirement-council](./skills/requirement-council/) | 执行带对话上下文的 Agent 间需求讨论，并给出有证据支持的方案、风险和待补事实。 | **可选，仅 Codex** 阶段，由主 Agent 和两个子角色组成。它写入候选 `requirement.md`；由 `$requirement-to-intent` 负责交接。 |
 | [requirement-clarification](./skills/requirement-clarification/) | 通过 `grilling` 或内置回退流程，与人工对齐已有 `requirement.md`。 | Intent 前的可选阶段；它更新需求 revision，但不创建 Intent 或 roadmap。 |
 | [requirement-to-intent](./skills/requirement-to-intent/) | 选择需求路径，并产出权威的、人工确认的 `intent.md`。 | Roadmap 前的必经门；可编排 Council、需求澄清、两者或直接讨论。 |
@@ -56,8 +56,7 @@ flowchart LR
 |---|---|
 | [Claude Code](https://claude.ai/code)（支持 plugin） | 将本仓库安装为 Claude Code 插件。 |
 | [Codex](https://openai.com/codex/) | 将选定技能安装或链接到 `~/.codex/skills/`。仓库提供仅显式调用的工作流元数据。 |
-| [Cursor](https://cursor.com/) 与可导入 `cursor_sdk` 的 Python 环境 | `$cursor-review`，可由审阅工作流按需调用；正常工作流不依赖 Cursor。 |
-| `~/.cursor-review/API_KEY` 中的 Cursor API key | 仅在调用 `$cursor-review` 时需要。不得将 key 写入仓库或提示词。 |
+| 经控制器批准的外部审阅后端 | `$cursor-review` 是可选能力；在 Cursor 能证明本地工具与隐式索引均已禁用前保持不可用，Flow 可使用已授权的运行时后备。 |
 | `grilling` 技能 | `requirement-clarification` 的可选引擎；缺失时该技能使用内置回退流程。 |
 | `brainstorming` 指引 | 可用于扩展替代方案；Requirement Council 已内置必要的比较核心，不依赖该技能。 |
 | `pms-issue-reader` 技能与 PMS 访问 | `requirement-to-intent` 在 issue 校验后使用一次；沙箱环境可能弹出只读网络权限申请。 |
@@ -118,7 +117,7 @@ $requirement-council
 
 ### Cursor 审阅配置（可选）
 
-`$cursor-review` 统一维护受限、只读的 runner。首次使用时，经人工授权后运行 `python skills/cursor-review/scripts/install_cursor_sdk.py`，将固定版本 SDK 安装到 `~/.codex/runtime/cursor-review`；runner 总是自动切换到该专用 Python。在 Cursor 中生成 API key，并仅将 key 保存到 `~/.cursor-review/API_KEY`，再运行 `scripts/cursor_review.py --check`。脚本默认使用 `grok-4.6` 和 `high` 思考强度，且不会给 Cursor 写文件或 shell 权限。
+`$cursor-review` 只接受控制器在私有目录中物化的请求文件，以及 `--no-tools` 与 `--expected-request-digest`。在读取任何请求字节或凭据前，控制器会用隔离 Python 执行已固定并捕获的适配器字节，并要求能力检查同时证明本地工具和隐式索引均已禁用。当前 Cursor bridge 无法证明该合同，因此 `scripts/cursor_review.py --check-capabilities` 会返回带 framing 的 `BACKEND_UNAVAILABLE`，Flow 随后执行已授权的运行时后备策略。不得用专用 runtime、API key 文件或仓库 workspace 代替这项证明。
 
 ## 开源协议
 
