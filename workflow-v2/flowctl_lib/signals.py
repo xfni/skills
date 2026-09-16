@@ -30,9 +30,11 @@ def _load(path):
         data["stage"] == "flow-integration"
         and data["signal"] in {"FLOW_RUN_ROUTE_BACK", "FLOW_RUN_BLOCKED"}
     )
-    if integration_failure != ("integration_results" in data):
+    has_results = 'integration_results' in data
+    if ((has_results and not integration_failure)
+            or (integration_failure and data['signal'] == 'FLOW_RUN_ROUTE_BACK' and not has_results)):
         raise FlowctlError("SIGNAL_SCHEMA_INVALID", field="integration_results")
-    if integration_failure:
+    if has_results:
         try:
             validate_integration_results(data["integration_results"])
         except FlowctlError as exc:
@@ -94,7 +96,13 @@ def record_signal(state_path, payload_path, expected_state_revision):
             plan = state.get("artifacts", {}).get(f"plan:{milestone}") if milestone else None
             if not plan:
                 raise FlowctlError("INTEGRATION_PLAN_BINDING_MISMATCH")
-            validate_integration_results_against_plan(integration_results, plan)
+            if payload['signal'] == 'FLOW_RUN_BLOCKED' and not integration_results.get('gaps'):
+                # A startup/environment failure is not a coverage or completion claim.
+                if (integration_results.get('plan_digest') not in {None, plan.get('digest')}
+                        or integration_results.get('plan_revision') not in {None, plan.get('revision')}):
+                    raise FlowctlError('INTEGRATION_PLAN_BINDING_MISMATCH')
+            else:
+                validate_integration_results_against_plan(integration_results, plan)
             expected_status = (
                 "FAILED" if payload["signal"] == "FLOW_RUN_ROUTE_BACK" else "BLOCKED"
             )

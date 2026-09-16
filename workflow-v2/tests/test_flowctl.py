@@ -537,8 +537,9 @@ class IntegrationResultsTests(unittest.TestCase):
                 missing_results.pop("integration_results")
                 missing_path = root / "missing-results-signal.json"
                 missing_path.write_text(json.dumps(missing_results))
-                with self.assertRaisesRegex(FlowctlError, "SIGNAL_SCHEMA_INVALID"):
-                    record_signal(state_path, missing_path, decided["state_revision"])
+                if signal == 'FLOW_RUN_ROUTE_BACK':
+                    with self.assertRaisesRegex(FlowctlError, "SIGNAL_SCHEMA_INVALID"):
+                        record_signal(state_path, missing_path, decided["state_revision"])
 
                 self_reported = dict(missing_results, open_gaps=aggregate["gaps"])
                 self_reported_path = root / "self-reported-gap-signal.json"

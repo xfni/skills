@@ -1,5 +1,6 @@
 import json
 import copy
+import hashlib
 from pathlib import Path
 
 from .artifacts import KINDS, read_artifact as verify_artifact, is_reviewable_artifact
@@ -193,6 +194,42 @@ def _restore_current_code_gpt_lane(state):
             state['reviews']['lanes'].setdefault(key, {})['gpt'] = candidate
 
 
+def _accepted_code_handoff(state_path, state, key):
+    """Find a real accepted transition in the controller-bound event chain."""
+    path = Path(state_path).with_name('flow-events.jsonl')
+    if not path.exists():
+        return False
+    previous, accepted, seq = None, False, 0
+    for seq, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+        try:
+            event = json.loads(line)
+            if not isinstance(event, dict):
+                return False
+            digest = event.pop('event_digest')
+        except (ValueError, KeyError, TypeError):
+            return False
+        canonical = json.dumps(event, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()
+        if (event.get('seq') != seq or event.get('previous_event_digest') != previous
+                or digest != 'sha256:' + hashlib.sha256(canonical).hexdigest()):
+            return False
+        previous = digest
+        if event.get('event') == 'HANDOFF_ACCEPTED' and event.get('artifact_key') == key:
+            accepted = (event.get('from_stage') == 'flow-code'
+                        and event.get('next_stage') in {'flow-integration', 'auto'}
+                        and event.get('issue_id') == state['issue_id']
+                        and event.get('run_id') == state['run_id'])
+        elif (event.get('event') == 'HANDOFF_ACCEPTED'
+              and event.get('artifact_key') == key.replace('code:', 'integration:')):
+            accepted = False
+        elif (event.get('event') == 'ARTIFACT_REGISTERED'
+              and event.get('artifact_key') in {'requirement', 'intent', 'roadmap', key,
+                                              key.replace('code:', 'plan:'), key.replace('code:', 'spec:')}):
+            accepted = False
+        elif key in event.get('invalidated_artifacts', []):
+            accepted = False
+    return bool(accepted and previous == state.get('event_head') and seq == state['state_revision'])
+
+
 def reconcile_resume(state_path, discovery, expected_state_revision):
     """Atomically make the verified discovery chain the controller checkpoint."""
     with locked_state(state_path, expected_state_revision) as state:
@@ -329,6 +366,17 @@ def reconcile_resume(state_path, discovery, expected_state_revision):
                     state['pending_action'] = next_review_action(state, artifact_key(deepest['type'], state['active_milestone']))
                 else:
                     state["pending_action"] = f"handoff:{deepest['type']}"
+        milestone = state.get('active_milestone')
+        code_key = f'code:{milestone}' if milestone else None
+        if (not pending_route_back and state.get('current_stage') == 'flow-code'
+                and code_key in artifacts
+                and original_state.get('artifacts', {}).get(code_key, {}).get('digest') == artifacts[code_key]['digest']
+                and _accepted_code_handoff(state_path, original_state, code_key)):
+            state['current_stage'] = 'flow-integration'
+            recorded = state.get('snapshots', {}).get(code_key)
+            actual = actual_snapshots.get(code_key)
+            drift = not recorded or not actual or recorded['snapshot_digest'] != actual['snapshot_digest']
+            state['pending_action'] = 'inspect:integration-snapshot' if drift else 'produce:integration'
         if pending_route_back:
             state["current_stage"] = route_owner_stage
             state["pending_action"] = f"revise:{route_owner_stage.removeprefix('flow-')}"

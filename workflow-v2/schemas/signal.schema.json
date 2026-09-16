@@ -11,7 +11,7 @@
       },
       "required": ["signal", "stage"]
     },
-    "then": {"required": ["integration_results"]},
+    "then": {},
     "else": {"not": {"required": ["integration_results"]}}
   }, {
     "if": {
@@ -22,6 +22,7 @@
       "required": ["signal", "stage"]
     },
     "then": {
+      "required": ["integration_results"],
       "properties": {
         "integration_results": {"properties": {"status": {"const": "FAILED"}}}
       }
