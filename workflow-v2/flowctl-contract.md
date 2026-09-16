@@ -26,6 +26,10 @@ Every command emits one structured JSON object. Read its returned `state_revisio
 
 ## Required command boundary
 
+### Runtime Goal context
+
+`flowctl goal record --state <controller> --payload <snapshot.json> --expected-revision <revision>` records the actual runtime tool's `goal` object (nonempty threadId/objective/status and integer createdAt), ignoring usage and other auxiliary fields. Identity is `(threadId, createdAt)`; refresh status without advancing Flow, retain replaced references in `runtime_goal_history`, and leave pending signals/reviews/artifacts unchanged. Identical context is idempotent. Recording is allowed during a human pause; it cannot clear it. This is caller-observed recovery context, not verified host activation or an approval receipt. There is no shell Goal create/update command and no required Goal field for handoff/resume. The root uses real host tools per `flow-run` and respects host lifecycle rules.
+
 ### Reviewed-stage lifecycle
 
 For Cursor/iBrain transport exclusions use the existing `--manifest` with `exclusions: [{"path":"tests/data","kind":"directory","reason":"production test inputs"}]`; validate/bind/consume retains these inputs, and fresh retry/backend manifests must repeat them. This filters the copied view only, never the original source freeze. No data-transfer human gate is added; disclose excluded evidence and continue review under `review-contract.md`.

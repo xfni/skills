@@ -556,6 +556,30 @@ def register_artifact(state_path, path, kind, milestone, expected_state_revision
         })
 
 
+def record_runtime_goal(state_path, payload_path, expected_state_revision):
+    """Record caller-observed runtime context; never create a Goal or approve Flow."""
+    try:
+        payload = json.loads(Path(payload_path).read_text(encoding="utf-8"))
+        goal = payload.get("goal") if isinstance(payload, dict) else None
+        if (not isinstance(goal, dict)
+                or any(not isinstance(goal.get(key), str) or not goal[key].strip()
+                       for key in ("threadId", "objective", "status"))
+                or type(goal.get("createdAt")) is not int or goal["createdAt"] < 0):
+            raise ValueError("invalid runtime context")
+        reference = {key: goal[key] for key in ("threadId", "createdAt", "objective", "status")}
+    except (OSError, ValueError, TypeError):
+        raise FlowctlError("INVALID_RUNTIME_GOAL") from None
+    with locked_state(state_path, expected_state_revision) as state:
+        prior = state.get("runtime_goal")
+        if prior == reference:
+            return state
+        if prior and any(prior.get(key) != reference[key]
+                         for key in ("threadId", "createdAt", "objective")):
+            state.setdefault("runtime_goal_history", []).append(prior)
+        state["runtime_goal"] = reference
+        return commit_state(state_path, state, "RUNTIME_GOAL_RECORDED", {"runtime_goal": reference})
+
+
 CODER_FIELDS = {
     "coder_thread_id", "coder_model", "coder_effort", "active_task",
     "completed_tasks", "last_checkpoint", "replacement_generation",

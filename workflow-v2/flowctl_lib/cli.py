@@ -15,7 +15,7 @@ from .resume import reconcile_resume, resume_flow
 from .reviews import begin_review, repair_review_attempt, run_cursor_review, run_ibrain_review, submit_review
 from .snapshot import record_snapshot
 from .signals import record_signal
-from .state import audit_state, initialize_state, read_consistent_state, register_artifact, update_coder_state, validate_admission
+from .state import audit_state, initialize_state, read_consistent_state, record_runtime_goal, register_artifact, update_coder_state, validate_admission
 from .stage_summary import stage_summary
 
 
@@ -105,6 +105,13 @@ def _parser():
     accept.add_argument("--state", required=True)
     accept.add_argument("--handoff", required=True)
     accept.add_argument("--expected-revision", required=True, type=int)
+
+    goal = commands.add_parser("goal", help="Runtime Goal reference only; not runtime activation")
+    goal_commands = goal.add_subparsers(dest="goal_command", required=True)
+    goal_record = goal_commands.add_parser("record")
+    goal_record.add_argument("--state", required=True)
+    goal_record.add_argument("--payload", required=True)
+    goal_record.add_argument("--expected-revision", required=True, type=int)
 
     coder = commands.add_parser("coder")
     coder_commands = coder.add_subparsers(dest="coder_command", required=True)
@@ -259,6 +266,9 @@ def dispatch(args):
     if args.command == "handoff" and args.handoff_command == "accept":
         _validate_command_admission(args.state)
         return accept_handoff(args.state, args.handoff, args.expected_revision)
+    if args.command == "goal" and args.goal_command == "record":
+        _validate_command_admission(args.state)
+        return {"ok": True, "state": record_runtime_goal(args.state, args.payload, args.expected_revision)}
     if args.command == "coder" and args.coder_command == "update":
         _validate_command_admission(args.state)
         return {"ok": True, "state": update_coder_state(args.state, args.payload, args.expected_revision)}

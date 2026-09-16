@@ -77,7 +77,6 @@ class WorkflowV2Tests(unittest.TestCase):
             "route backward", "do not bypass", "mark the goal complete",
             "target_milestones", "pending", "completed", "deferred",
             "explicit arbitrary-node start", "disclose missing history",
-            "goal ID", "issue and objective", "must not replace",
             "clear affected completed handoffs",
         ):
             self.assertIn(value, text)
