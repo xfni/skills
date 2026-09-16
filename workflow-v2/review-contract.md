@@ -34,4 +34,4 @@ Runner owns exactly one FLOW_REVIEW_REPORT_BEGIN/END frame. Identical repeated m
 
 Known historical iBrain duplicate-frame failures may be invalidated through audited flowctl review repair-classification, preserving classification and evidence and excluding those bridge-bug attempts from retry counts. This is operator-attested diagnosis when old evidence is digest-only, not recovered PASS; a fresh independent report is required. Do not reinterpret unrelated protocol or substantive failures.
 
-Production replay still requires its independent production_replay decision and exact manifest; review trust never grants production acquisition, unsanitized replay or external raw-data transfer.
+Production-data use requires its independent scoped decision and applicable project/host permissions. Flow does not validate sanitization. Review trust never authorizes production acquisition, production mutation or transfer of test datasets. Keep production-derived inputs out of reviewer views and Git regardless of whether they were sanitized.

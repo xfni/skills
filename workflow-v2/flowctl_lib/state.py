@@ -219,8 +219,6 @@ def audit_state(state):
 
 
 def reject_if_paused(state):
-    from .replay import reject_unresolved_cleanup
-    reject_unresolved_cleanup(state)
     signal = state.get("pending_signal", {}).get("signal")
     if signal in {"FLOW_RUN_HUMAN_GATE", "FLOW_RUN_BLOCKED"}:
         raise FlowctlError("FLOW_PAUSED", signal=signal)

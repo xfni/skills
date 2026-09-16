@@ -10,11 +10,13 @@ DENIED = "DENIED"
 AMENDMENT_PENDING = "AMENDMENT_PENDING"
 INVALIDATED = "INVALIDATED"
 SANITIZED_LOCAL_REPLAY = "SANITIZED_LOCAL_REPLAY"
+LOCAL_PRODUCTION_REPLAY = "LOCAL_PRODUCTION_REPLAY"
 SKIP_PRODUCTION_REPLAY = "SKIP_PRODUCTION_REPLAY"
 
 AUTHORIZATION_KINDS = {"external_review", "production_replay"}
 AUTHORIZATION_STATUSES = {PENDING, GRANTED, DENIED, AMENDMENT_PENDING, INVALIDATED}
-PRODUCTION_REPLAY_MODES = {SANITIZED_LOCAL_REPLAY, SKIP_PRODUCTION_REPLAY}
+# Historical decisions retain their recorded identity; they prove no sanitization.
+PRODUCTION_REPLAY_MODES = {LOCAL_PRODUCTION_REPLAY, SANITIZED_LOCAL_REPLAY, SKIP_PRODUCTION_REPLAY}
 EXTERNAL_REVIEW_STAGES = ("flow-spec", "flow-plan", "flow-code")
 HARD_EXCLUSIONS = (
     "credentials",
@@ -54,11 +56,9 @@ def default_authorizations():
         "production_replay": {
             **deepcopy(common),
             "mode": None,
-            "raw_persistence": DENIED,
             "external_model_transmission": DENIED,
             "git_tracking": DENIED,
-            "cleanup_required": True,
-            "exclusions": list(HARD_EXCLUSIONS),
+            "exclusions": [item for item in HARD_EXCLUSIONS if item != 'raw_production_data'],
         },
     }
 
@@ -72,13 +72,15 @@ def _is_authorization_id(value):
         return False
 
 
-def _has_hard_exclusions(authorization):
+def _has_hard_exclusions(authorization, kind='external_review'):
     exclusions = authorization.get("exclusions")
     return (
         isinstance(exclusions, list)
-        and len(exclusions) == len(HARD_EXCLUSIONS)
         and all(isinstance(item, str) for item in exclusions)
-        and set(exclusions) == set(HARD_EXCLUSIONS)
+        and len(exclusions) == len(set(exclusions))
+        and (set(exclusions) == set(HARD_EXCLUSIONS) or
+             kind == 'production_replay' and
+             set(exclusions) == set(HARD_EXCLUSIONS) - {'raw_production_data'})
     )
 
 
@@ -92,7 +94,7 @@ def _valid_prior_decision(kind, authorization):
 
 
 def _valid_authorization(kind, authorization):
-    if not _has_hard_exclusions(authorization):
+    if not _has_hard_exclusions(authorization, kind):
         return False
     if any(not isinstance(authorization.get(field), str) or not authorization[field]
            for field in IDENTITY_FIELDS):
@@ -112,10 +114,8 @@ def _valid_authorization(kind, authorization):
                 or authorization.get("allowed_backends") != ["cursor", "ibrain"]):
             return False
     elif (
-        authorization.get("raw_persistence") != DENIED
-        or authorization.get("external_model_transmission") != DENIED
+        authorization.get("external_model_transmission") != DENIED
         or authorization.get("git_tracking") != DENIED
-        or authorization.get("cleanup_required") is not True
     ):
         return False
 

@@ -34,8 +34,6 @@ def validate_plan_integration_scenarios(contract):
         dependency = scenario.get("production_dependency")
         if not isinstance(dependency, dict) or type(dependency.get("required")) is not bool:
             raise FlowctlError("INVALID_PLAN_INTEGRATION_SCENARIOS", scenario_id=scenario_id)
-        if 'replay_manifest_digest' in dependency and (not dependency['required'] or not _valid_digest(dependency['replay_manifest_digest'])):
-            raise FlowctlError("INVALID_PLAN_INTEGRATION_SCENARIOS", scenario_id=scenario_id)
     return contract
 
 

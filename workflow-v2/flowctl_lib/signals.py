@@ -81,8 +81,6 @@ def _invalidate_from(state, stage):
 def record_signal(state_path, payload_path, expected_state_revision):
     payload = _load(payload_path)
     with locked_state(state_path, expected_state_revision) as state:
-        from .replay import reject_unresolved_cleanup
-        reject_unresolved_cleanup(state)
         if payload["issue_id"] != state["issue_id"]:
             raise FlowctlError("ISSUE_MISMATCH")
         if payload["run_id"] != state["run_id"]:

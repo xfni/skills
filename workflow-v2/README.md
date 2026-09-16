@@ -32,7 +32,7 @@ $flow-integration  -> integration evidence
 
 Read and enforce [the frozen worktree review contract](review-contract.md). Review the complete filtered frozen worktree with independent exploration; the root brief is not sole evidence. iBrain is organization-trusted; no external-review authorization gate. Reviewer returns stdout/API only and never writes worktree. Freeze by digest (no automatic commit); source/private snapshot verification and single-use package binding are controller-owned.
 
-The production replay decision reaches Integration as its controller authorization ID/revision. `SANITIZED_LOCAL_REPLAY` still requires a validated Plan-pinned replay manifest before acquisition, while `SKIP_PRODUCTION_REPLAY` executes unaffected scenarios and records authorized gaps. Resume reuses active decisions without prompting when identity and scope still match.
+The production-data decision reaches Integration by controller authorization ID/revision. `LOCAL_PRODUCTION_REPLAY` uses existing project runners for local tests without sanitizer/profile/manifest prerequisites. Flow does not own business-data sanitization; project policy remains authoritative. `SKIP_PRODUCTION_REPLAY` executes unaffected scenarios and records gaps. Resume reuses active scope, preserving historical decisions without inventing sanitization evidence.
 
 Direct Spec/Plan/Code invocation uses the same frozen-worktree review policy without a human external-review gate. Direct Integration obtains only the minimal production_replay decision if its confirmed charter needs production-derived data; it never grants authority to another stage.
 
@@ -47,6 +47,10 @@ The controller enforces the minimum next-step conditions: current identity/outpu
 Every stage must read and follow [`flow-contract.md`](flow-contract.md), [`artifact-contract.md`](artifact-contract.md), and [`flowctl-contract.md`](flowctl-contract.md). `flowctl` is the only writer of controller/event state and the only component allowed to accept a checkpoint, review binding, retry/degradation, or successful handoff. Flow admission obtains a human-provided issue and creates or reuses the isolated worktree before artifact discovery; every stage revalidates that binding through `flowctl status`. `AGENTS.md` may add stricter project safety and output rules but is not required for Flow correctness and must not duplicate Flow gates.
 
 ## Codex setup
+
+Production-data policy migration: existing `SANITIZED_LOCAL_REPLAY` decisions and old adapter bindings stay as historical records, not sanitization/deletion proof. Reuse their scoped local-use authority without broadening a narrower human/project instruction. Adapter-only pauses can be resumed with a bound signal after checking actual safety obstacles; do not rewrite controller history. `flowctl replay validate/run/cleanup` and production manifest validation are retired. Existing project runners provide real execution evidence; only temporary-service and test-side-effect cleanup is part of Flow completion.
+
+Pending: let explicit `$flow-run` invocation request creation/reuse of a matching runtime Goal, with no automatic replacement of an unrelated unfinished goal. Not implemented in this revision.
 
 Install the nine directories under `skills/` into `~/.codex/skills/`. Also copy `flowctl.py`, `flowctl_lib/`, and `schemas/` together to `~/.codex/flow-v2/`; skills resolve that packaged executable when they are not running from this repository. Invoke `$flow-run` for continuous orchestration or an individual stage for direct control. `flow-requirement` requires `flow-brainstorm` and also needs its two custom Agent TOMLs copied from `skills/flow-requirement/agents/` into `~/.codex/agents/`:
 

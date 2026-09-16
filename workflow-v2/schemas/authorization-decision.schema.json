@@ -22,7 +22,7 @@
       "required": ["decision"],
       "properties": {
         "decision": {
-          "enum": ["SANITIZED_LOCAL_REPLAY", "SKIP_PRODUCTION_REPLAY"]
+          "enum": ["LOCAL_PRODUCTION_REPLAY", "SANITIZED_LOCAL_REPLAY", "SKIP_PRODUCTION_REPLAY"]
         }
       }
     }

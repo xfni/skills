@@ -29,7 +29,7 @@ caller: flow-run
 run_id; issue_id; controller_path
 stage; input paths/revisions/digests or snapshot binding
 optional coder_agent: coder_thread_id; coder_model; coder_effort; active_task; completed_tasks; last_checkpoint; replacement_generation; replacement_reason; prior_coder_thread_id
-optional authorization_bindings: production_replay authorization_id/revision; controller-validated replay binding; external review package binding
+optional authorization_bindings: production_replay authorization_id/revision; external review package binding
 ```
 
 Without that envelope, use **Direct invocation** behavior and keep the stage's normal stop-and-suggest-next response. With it, use **Orchestrated invocation** behavior: preserve every stage rule and gate, but return exactly one signal to `$flow-run` instead of ending with a manual next-skill instruction.
@@ -89,4 +89,4 @@ Read and enforce [the frozen worktree review contract](review-contract.md). Revi
 
 Cursor and iBrain use separate single-use package bindings on the same artifact snapshot. iBrain is fixed to glm-5.3 and activates only after two controller-recorded retryable Cursor process failures; findings never select fallback. No human review authorization is required, and legacy denied/pending Cursor decisions must not resurrect a gate. Production replay remains independently authorized.
 
-The `production_replay` authorization is likewise carried by authorization ID/revision plus a controller-validated operation manifest. `SANITIZED_LOCAL_REPLAY` permits only the bounded sanitized local replay policy; `SKIP_PRODUCTION_REPLAY` remains an active decision rather than an absent authorization. Any change uses the same amendment path and never derives consent from wording.
+The `production_replay` decision is carried by authorization ID/revision. `LOCAL_PRODUCTION_REPLAY` permits scoped production acquisition and local tests under project data policy, without a Flow sanitization/profile/manifest gate; `SKIP_PRODUCTION_REPLAY` is an active skip decision. Historical `SANITIZED_LOCAL_REPLAY` identities may be reused without asserting that data was sanitized or weakening a narrower human instruction. Amend changed authority; never derive consent from wording.

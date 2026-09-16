@@ -166,13 +166,6 @@ class MinimumArtifactAndTestGates(unittest.TestCase):
             with self.assertRaisesRegex(FlowctlError, 'INTEGRATION_RESULTS_REQUIRED'):
                 require_integration_results(integration, plan)
 
-    def test_replay_manifest_requires_object_before_binding(self):
-        from flowctl_lib.replay import _preflight
-        for manifest in ([], None, 'bad'):
-            with self.subTest(manifest=manifest):
-                with self.assertRaisesRegex(FlowctlError, 'INVALID_REPLAY_MANIFEST'):
-                    _preflight({}, manifest)
-
     def test_readable_artifact_does_not_need_exact_serialization_or_declared_digest(self):
         import flowctl_lib.artifacts as artifacts
         with tempfile.TemporaryDirectory() as tmp:

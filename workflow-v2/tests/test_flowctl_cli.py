@@ -265,5 +265,5 @@ class FlowctlCliTests(unittest.TestCase):
         self.assertTrue(external["properties"]["allowed_stages"]["uniqueItems"])
         self.assertEqual(1, external["properties"]["allowed_stages"]["minItems"])
         self.assertEqual(["decision"], replay["required"])
-        self.assertEqual(["SANITIZED_LOCAL_REPLAY", "SKIP_PRODUCTION_REPLAY"],
+        self.assertEqual(["LOCAL_PRODUCTION_REPLAY", "SANITIZED_LOCAL_REPLAY", "SKIP_PRODUCTION_REPLAY"],
                          replay["properties"]["decision"]["enum"])

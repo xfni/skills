@@ -5,10 +5,6 @@ def stage_summary(state):
     stage = state.get('current_stage')
     action = state.get('pending_action') or ''
     signal = state.get('pending_signal') or {}
-    bindings = state.get('authorizations', {}).get('production_replay', {}).get('bindings', [])
-    cleanup = any(binding.get('evidence', {}).get('status') in {'BLOCKED_CLEANUP', 'INTERRUPTED'}
-                  and binding.get('cleanup_recovery', {}).get('status') != 'PASSED'
-                  for binding in bindings)
     result = None
     if signal.get('signal') == 'FLOW_RUN_ROUTE_BACK':
         result = '拒绝'
@@ -23,9 +19,7 @@ def stage_summary(state):
                and attempt.get('artifact_digest') == artifact.get('digest')
                for attempt in state.get('reviews', {}).get('attempts', {}).values()):
             result = '拒绝'
-    if cleanup:
-        status, explanation = '阻塞中', '生产回放清理尚未完成，需完成清理证明后恢复'
-    elif signal.get('signal') in {'FLOW_RUN_BLOCKED', 'FLOW_ADMISSION_BLOCKED'} or action.startswith('blocked'):
+    if signal.get('signal') in {'FLOW_RUN_BLOCKED', 'FLOW_ADMISSION_BLOCKED'} or action.startswith('blocked'):
         status = '阻塞中'
         explanation = signal.get('cause') or action or '存在明确障碍'
     elif signal.get('signal') in {'FLOW_RUN_HUMAN_GATE', 'FLOW_ADMISSION_GATE'} or action == 'human_gate':

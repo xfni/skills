@@ -169,8 +169,6 @@ def resume_flow(issue_id, repo_root, inputs_path=None, controller=None):
 def reconcile_resume(state_path, discovery, expected_state_revision):
     """Atomically make the verified discovery chain the controller checkpoint."""
     with locked_state(state_path, expected_state_revision) as state:
-        from .replay import reject_unresolved_cleanup
-        reject_unresolved_cleanup(state)
         original_state = copy.deepcopy(state)
         if discovery["issue_id"] != state["issue_id"]:
             raise FlowctlError("ISSUE_MISMATCH")

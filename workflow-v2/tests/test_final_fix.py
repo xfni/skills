@@ -12,13 +12,12 @@ from unittest.mock import patch
 
 from test_flowctl import write_artifact
 import test_flowctl
-import test_replay
 import test_review_runners
 from flowctl_lib.errors import FlowctlError
 
 
 class CleanupBlockerTests(unittest.TestCase):
-    def test_actual_authorization_amendment_preserves_cleanup_obligation(self):
+    def test_authorization_amendment_retains_legacy_record_without_cleanup_gate(self):
         from flowctl_lib.authorizations import decide_authorization, begin_authorization_amendment
         from flowctl_lib.state import initialize_state, commit_state, reject_if_paused
         with tempfile.TemporaryDirectory() as tmp:
@@ -31,27 +30,16 @@ class CleanupBlockerTests(unittest.TestCase):
             state = commit_state(path, state, 'FIXTURE_INTERRUPTED', {})
             state = begin_authorization_amendment(path, 'production_replay', 'SKIP_PRODUCTION_REPLAY', state['state_revision'])
             state = decide_authorization(path, 'production_replay', 'SKIP_PRODUCTION_REPLAY', state['state_revision'])
-            with self.assertRaisesRegex(FlowctlError, 'REPLAY_CLEANUP_REQUIRED'):
-                reject_if_paused(state)
+            reject_if_paused(state)
+            self.assertEqual('INTERRUPTED', state['authorizations']['production_replay']['bindings'][0]['evidence']['status'])
 
-    def test_cleanup_evidence_blocks_all_progression_entrypoints(self):
+    def test_legacy_cleanup_record_is_not_a_global_pause(self):
         from flowctl_lib.state import reject_if_paused
-        from flowctl_lib.resume import reconcile_resume
-        from flowctl_lib.signals import record_signal
         state = {'authorizations': {'production_replay': {'bindings': [{
             'binding_id': 'interrupted', 'evidence': {'status': 'BLOCKED_CLEANUP'},
         }]}}, 'issue_id': 'ISSUE-2', 'run_id': 'run', 'current_stage': 'flow-integration'}
-        @contextlib.contextmanager
-        def locked(*args):
-            yield state
-        with self.assertRaisesRegex(FlowctlError, 'REPLAY_CLEANUP_REQUIRED'):
-            reject_if_paused(state)
-        with patch('flowctl_lib.resume.locked_state', locked):
-            with self.assertRaisesRegex(FlowctlError, 'REPLAY_CLEANUP_REQUIRED'):
-                reconcile_resume('unused', {}, 0)
-        with patch('flowctl_lib.signals.locked_state', locked), patch('flowctl_lib.signals._load', return_value={}):
-            with self.assertRaisesRegex(FlowctlError, 'REPLAY_CLEANUP_REQUIRED'):
-                record_signal('unused', 'unused', 0)
+        reject_if_paused(state)
+        self.assertEqual('BLOCKED_CLEANUP', state['authorizations']['production_replay']['bindings'][0]['evidence']['status'])
 
     def test_missing_results_only_legacy_plan_can_resume(self):
         from flowctl_lib.resume import _integration_result_valid
@@ -87,209 +75,6 @@ class CleanupBlockerTests(unittest.TestCase):
                 accept_handoff(state_path, handoff, state['state_revision'])
 
 
-class ReplayPlanTests(unittest.TestCase):
-    setUp = test_replay.ReplayTests.setUp
-    set_command = test_replay.ReplayTests.set_command
-    bind = test_replay.ReplayTests.bind
-    approve_plan = test_replay.ReplayTests.approve_plan
-    def test_missing_plan_rejected_before_spawn(self):
-        self.state['current_stage'] = 'flow-requirement'
-        self.manifest_path.write_text(json.dumps(self.manifest))
-        with patch.object(self.replay, '_execute') as spawn:
-            with self.assertRaisesRegex(FlowctlError, 'REPLAY_PLAN_BINDING_REQUIRED'):
-                self.replay.validate_replay_manifest('unused', self.manifest_path, 0)
-            spawn.assert_not_called()
-
-    def test_plan_and_stage_drift_rejected_before_execution(self):
-        binding = self.bind()
-        for key in self.replay.PLAN_BINDING_KEYS:
-            self.assertEqual(binding.get(key), self.manifest[key])
-        for change in ('stage', 'plan', 'scenario'):
-            with self.subTest(change=change), patch.object(self.replay, '_execute') as execute:
-                original = json.loads(json.dumps(self.state))
-                if change == 'stage':
-                    self.state['current_stage'] = 'flow-code'
-                elif change == 'plan':
-                    self.state['artifacts']['plan:M1']['revision'] += 1
-                else:
-                    self.state['artifacts']['plan:M1']['integration_scenarios']['scenarios'][0]['production_dependency']['required'] = False
-                with self.assertRaises(FlowctlError):
-                    self.replay.run_replay('unused', binding['binding_id'], 1)
-                execute.assert_not_called()
-                self.state.clear()
-                self.state.update(original)
-
-    def test_cleanup_recovery_proves_removal_after_amendment(self):
-        self.set_command('cleanup', 'from pathlib import Path\nPath(' + repr(str(self.root / 'private/replay.jsonl')) + ').unlink(missing_ok=True)\n')
-        binding = self.bind()
-        with patch.object(self.replay, '_execute', side_effect=KeyboardInterrupt):
-            with self.assertRaises(KeyboardInterrupt):
-                self.replay.run_replay('unused', binding['binding_id'], 1)
-        self.state['authorizations']['production_replay']['mode'] = 'SKIP_PRODUCTION_REPLAY'
-        recover = getattr(self.replay, 'recover_replay_cleanup', None)
-        self.assertIsNotNone(recover, 'controller cleanup-proof recovery is required')
-        result = recover('unused', binding['binding_id'], 2)
-        self.assertEqual(result['status'], 'PASSED')
-        self.assertFalse(list((self.root / 'private').iterdir()))
-        self.replay.reject_unresolved_cleanup(self.state)
-
-    def test_recovery_does_not_delegate_deletion_even_for_owned_final(self):
-        destination = self.root / 'private/replay.jsonl'
-        marker = self.root / 'cleanup-ran'
-        self.set_command('cleanup', 'from pathlib import Path\n'
-            'Path(' + repr(str(marker)) + ').write_text("ran")\n'
-            'Path(' + repr(str(destination)) + ').unlink(missing_ok=True)\n')
-        binding = self.interrupt_after_publication()
-        original = destination.read_bytes()
-        result = self.replay.recover_replay_cleanup('unused', binding['binding_id'], self.state['state_revision'])
-        self.assertEqual(result['status'], 'FAILED')
-        self.assertFalse(marker.exists())
-        self.assertEqual(destination.read_bytes(), original)
-
-    def test_recovery_removes_only_proven_random_staging_without_adapter(self):
-        binding = self.bind()
-        original_spawn = self.replay.subprocess.Popen
-        cleanup_source = (self.root / 'cleanup.py').read_text()
-        def interrupt_cleanup(command, **kwargs):
-            if len(command) > 4 and command[4] == cleanup_source:
-                raise KeyboardInterrupt
-            return original_spawn(command, **kwargs)
-        with patch.object(self.replay.subprocess, 'Popen', side_effect=interrupt_cleanup), \
-                patch.object(self.replay, '_record', side_effect=FlowctlError('REPLAY_OUTPUT_INVALID')):
-            with self.assertRaises(KeyboardInterrupt):
-                self.replay.run_replay('unused', binding['binding_id'], 1)
-        self.assertEqual(len(list((self.root / 'private').iterdir())), 1)
-        result = self.replay.recover_replay_cleanup('unused', binding['binding_id'], self.state['state_revision'])
-        self.assertEqual(result['status'], 'PASSED')
-        self.assertFalse(list((self.root / 'private').iterdir()))
-
-    def interrupt_after_publication(self):
-        binding = self.bind()
-        original_spawn = self.replay.subprocess.Popen
-        cleanup_source = (self.root / 'cleanup.py').read_text()
-        def interrupted_spawn(command, **kwargs):
-            if len(command) > 4 and command[4] == cleanup_source:
-                raise KeyboardInterrupt
-            return original_spawn(command, **kwargs)
-        with patch.object(self.replay.subprocess, 'Popen', side_effect=interrupted_spawn):
-            with self.assertRaises(KeyboardInterrupt):
-                self.replay.run_replay('unused', binding['binding_id'], 1)
-        self.assertTrue((self.root / 'private/replay.jsonl').is_file())
-        return binding
-
-    def test_recovery_rejects_replaced_owned_destination_before_cleanup(self):
-        destination = self.root / 'private/replay.jsonl'
-        marker = self.root / 'cleanup-ran'
-        self.set_command('cleanup', 'from pathlib import Path\n'
-            'Path(' + repr(str(marker)) + ').write_text("ran")\n'
-            'Path(' + repr(str(destination)) + ').unlink(missing_ok=True)\n')
-        binding = self.interrupt_after_publication()
-        destination.rename(destination.with_suffix('.owned'))
-        destination.write_text('replacement owner')
-        result = self.replay.recover_replay_cleanup('unused', binding['binding_id'], self.state['state_revision'])
-        self.assertEqual(result['status'], 'FAILED')
-        self.assertFalse(marker.exists())
-        self.assertEqual(destination.read_text(), 'replacement owner')
-
-    def test_recovery_rejects_changed_owned_bytes_before_cleanup(self):
-        destination = self.root / 'private/replay.jsonl'
-        self.set_command('cleanup', 'from pathlib import Path\n'
-            'Path(' + repr(str(destination)) + ').unlink(missing_ok=True)\n')
-        binding = self.interrupt_after_publication()
-        destination.write_text('changed bytes on same inode')
-        result = self.replay.recover_replay_cleanup('unused', binding['binding_id'], self.state['state_revision'])
-        self.assertEqual(result['status'], 'FAILED')
-        self.assertEqual(destination.read_text(), 'changed bytes on same inode')
-
-    def test_recovery_without_persisted_ownership_stays_blocked(self):
-        binding = self.bind()
-        with patch.object(self.replay, '_execute', side_effect=KeyboardInterrupt):
-            with self.assertRaises(KeyboardInterrupt):
-                self.replay.run_replay('unused', binding['binding_id'], 1)
-        self.state['authorizations']['production_replay']['bindings'][0].pop('cleanup_ownership')
-        result = self.replay.recover_replay_cleanup('unused', binding['binding_id'], self.state['state_revision'])
-        self.assertEqual(result['status'], 'FAILED')
-        with self.assertRaisesRegex(FlowctlError, 'REPLAY_CLEANUP_REQUIRED'):
-            self.replay.reject_unresolved_cleanup(self.state)
-
-    def test_recovery_does_not_delete_staging_created_after_absence_check(self):
-        binding = self.bind()
-        with patch.object(self.replay, '_execute', side_effect=KeyboardInterrupt):
-            with self.assertRaises(KeyboardInterrupt):
-                self.replay.run_replay('unused', binding['binding_id'], 1)
-        staging = self.state['authorizations']['production_replay']['bindings'][0]['cleanup_targets'][0]
-        path = self.root / 'private' / staging
-        original_stat = self.replay.os.stat
-        created = False
-        def racing_stat(target, **kwargs):
-            nonlocal created
-            if target == staging and 'dir_fd' in kwargs and not created:
-                path.write_text('concurrent staging owner')
-                created = True
-            return original_stat(target, **kwargs)
-        with patch.object(self.replay.os, 'stat', side_effect=racing_stat):
-            result = self.replay.recover_replay_cleanup('unused', binding['binding_id'], self.state['state_revision'])
-        self.assertTrue(path.exists(), 'recovery must not unlink a staging name without ownership')
-        self.assertEqual(path.read_text(), 'concurrent staging owner')
-        self.assertEqual(result['status'], 'FAILED')
-
-    def test_failed_cleanup_recovery_keeps_global_blocker(self):
-        self.set_command('cleanup', 'raise SystemExit(2)\n')
-        binding = self.bind()
-        result = self.replay.run_replay('unused', binding['binding_id'], 1)
-        self.assertEqual(result['status'], 'BLOCKED_CLEANUP')
-        recovered = self.replay.recover_replay_cleanup('unused', binding['binding_id'], result['state_revision'])
-        self.assertEqual(recovered['status'], 'FAILED')
-        with self.assertRaisesRegex(FlowctlError, 'REPLAY_CLEANUP_REQUIRED'):
-            self.replay.reject_unresolved_cleanup(self.state)
-
-    def test_recovery_does_not_delete_unproven_destination(self):
-        binding = self.bind()
-        with patch.object(self.replay, '_execute', side_effect=KeyboardInterrupt):
-            with self.assertRaises(KeyboardInterrupt):
-                self.replay.run_replay('unused', binding['binding_id'], 1)
-        destination = self.root / 'private/replay.jsonl'
-        destination.write_text('unproven concurrent owner')
-        result = self.replay.recover_replay_cleanup('unused', binding['binding_id'], 2)
-        self.assertEqual(result['status'], 'FAILED')
-        self.assertEqual(destination.read_text(), 'unproven concurrent owner')
-
-    def test_recovery_never_runs_destructive_cleanup_on_unowned_destination(self):
-        destination = self.root / 'private/replay.jsonl'
-        marker = self.root / 'cleanup-ran'
-        self.set_command('cleanup', 'from pathlib import Path\n'
-            'Path(' + repr(str(marker)) + ').write_text("ran")\n'
-            'Path(' + repr(str(destination)) + ').unlink(missing_ok=True)\n')
-        binding = self.bind()
-        with patch.object(self.replay, '_execute', side_effect=KeyboardInterrupt):
-            with self.assertRaises(KeyboardInterrupt):
-                self.replay.run_replay('unused', binding['binding_id'], 1)
-        destination.write_text('concurrent owner')
-        result = self.replay.recover_replay_cleanup('unused', binding['binding_id'], 2)
-        self.assertFalse(marker.exists(), 'unowned destination must prevent cleanup execution')
-        self.assertEqual(destination.read_text(), 'concurrent owner')
-        self.assertEqual(result['status'], 'FAILED')
-        with self.assertRaisesRegex(FlowctlError, 'REPLAY_CLEANUP_REQUIRED'):
-            self.replay.reject_unresolved_cleanup(self.state)
-
-    def test_successful_cleanup_recovery_is_terminal(self):
-        destination = self.root / 'private/replay.jsonl'
-        marker = self.root / 'cleanup-ran'
-        self.set_command('cleanup', 'from pathlib import Path\n'
-            'Path(' + repr(str(marker)) + ').write_text("ran")\n'
-            'Path(' + repr(str(destination)) + ').unlink(missing_ok=True)\n')
-        binding = self.bind()
-        with patch.object(self.replay, '_execute', side_effect=KeyboardInterrupt):
-            with self.assertRaises(KeyboardInterrupt):
-                self.replay.run_replay('unused', binding['binding_id'], 1)
-        recovered = self.replay.recover_replay_cleanup('unused', binding['binding_id'], 2)
-        self.assertEqual(recovered['status'], 'PASSED')
-        marker.unlink(missing_ok=True)
-        destination.write_text('later owner')
-        repeated = self.replay.recover_replay_cleanup('unused', binding['binding_id'], recovered['state_revision'])
-        self.assertFalse(marker.exists(), 'terminal recovery must not execute cleanup again')
-        self.assertEqual(destination.read_text(), 'later owner')
-        self.assertEqual(repeated, recovered)
 
 
 class ReviewMetadataTests(unittest.TestCase):

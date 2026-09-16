@@ -5,7 +5,7 @@ description: Use when the user explicitly requests continuous orchestration of t
 
 # Flow Run
 
-Unresolved replay cleanup evidence blocks all stage progression and terminal completion. Authorization amendment and resumed signals do not clear it. Require successful `flowctl replay cleanup --binding-id` evidence before retrying handoff or resume. Never interpret missing Integration results as legacy compatibility when the approved Plan contains `integration_scenarios`.
+Production data handling follows project policy, not a Flow sanitization protocol. Legacy adapter cleanup annotations alone are not progression gates; preserve their history and inspect actual temporary-service or test-side-effect risks. Never interpret missing Integration results as legacy compatibility when the approved Plan contains `integration_scenarios`.
 
 Orchestrate Flow v2 from the deepest valid checkpoint to integration evidence. Read and enforce `../../flow-contract.md`; this skill owns Flow admission and does not rely on `AGENTS.md` for issue or worktree correctness. Preserve every stage's artifact contract, ownership, reviews, and necessary human gates. Read and enforce `../../orchestration-contract.md` for every child-stage transition.
 
@@ -17,14 +17,14 @@ After admission, inspect only the controller's production_replay decision for th
 
 ```text
 生产数据回放授权
-范围：仅限当前议题、运行和工作树的本地脱敏回放。
-不允许保存原始数据、发送给模型或纳入 Git。
+范围：仅限当前议题、运行和工作树的生产数据获取及本地测试。
+Flow 不负责脱敏或证明脱敏；数据处理遵循项目规定。不向模型外发测试数据，不纳入 Git。
 不回放时仍执行所有测试环境或合成数据集成场景。
-1. 允许脱敏后回放生产数据（推荐）
+1. 允许使用生产数据进行本地测试（推荐）
 2. 不进行依赖生产数据的集成测试
 ```
 
-Map choice 1 to {"decision":"SANITIZED_LOCAL_REPLAY"}, choice 2 to {"decision":"SKIP_PRODUCTION_REPLAY"}. Record only a pending production_replay decision through flowctl authorization decide, using the current state revision. Reuse an active replay ID/revision on resume; changed replay authority follows flowctl authorization amend and the bound human decision. No Cursor/iBrain gate or repeated reviewer confirmation is permitted.
+Map choice 1 to {"decision":"LOCAL_PRODUCTION_REPLAY"}, choice 2 to {"decision":"SKIP_PRODUCTION_REPLAY"}. Record only a pending production_replay decision through flowctl authorization decide, using the current state revision. Reuse an active replay ID/revision on resume; changed replay authority follows flowctl authorization amend and the bound human decision. No Cursor/iBrain gate or repeated reviewer confirmation is permitted.
 
 Read and enforce [the frozen worktree review contract](../../review-contract.md). Review the complete filtered frozen worktree with independent exploration of source, tests and secrets exclusions; the root brief is not sole evidence. iBrain is organization-trusted; no external-review authorization gate. Reviewer returns stdout/API only and never writes worktree. Freeze by digest (no automatic commit); source/private snapshot verification and single-use package binding are controller-owned.
 
@@ -95,7 +95,7 @@ A child-stage report is internal orchestration output. The root must not surface
 
 Repair controllers produced by older or interrupted orchestration through `flowctl resume`; never rewrite them directly. This command may migrate the controller from a verified legacy checkpoint. A clean legacy Plan checkpoint without `integration_scenarios` remains resumable when no replay skip or new Integration results contract is used. Before either is needed, require a Plan revision and re-review that adds the machine contract. Resume must revalidate every Integration result against its same-milestone Plan and must reject any replay skip or gap unless the controller still has active `SKIP_PRODUCTION_REPLAY` authorization. A `pending_gate: explicit_stage_invocation`, a resume condition asking the human to copy a next-stage command, or an equivalent manual relay is obsolete orchestration state, never a valid human gate. The root must not ask the human to copy that command. Use only the controller's verified pending action; when roadmap approval is valid and milestone selection is already recorded, immediately continue to `flow-spec` without another selection or explicit invocation.
 
-For a historical pause caused solely by the superseded external_review human gate, preserve the old decision/signal and record FLOW_RUN_RESUMED with evidence of the current review-contract policy and verified binding; then resume and validate a fresh whole-view package. Do not ask for a new grant, amend a historical denial, reuse a byte-only binding or fabricate an old approval. This policy does not clear host permission refusals, production replay/cleanup gates, review findings, ambiguous failures or any mixed/unverified blocker; those retain their original recovery requirements.
+For a historical pause caused solely by a removed Flow sanitizer/profile/manifest/raw-data-cleanup prerequisite, preserve its history, verify that it names no actual unresolved safety issue, then record a bound FLOW_RUN_RESUMED with the current production-data policy and resume. This is not evidence that data was sanitized or deleted. Project constraints, host refusals, temporary-service/test-side-effect cleanup, review findings and mixed/unverified blockers remain valid gates. For a pause caused solely by the superseded external_review human gate, preserve history and record FLOW_RUN_RESUMED with current review policy and verified binding, then resume with a fresh package; never fabricate an old approval.
 
 At each necessary human gate, display exactly what decision or authority is missing and pause there. Have flowctl persist the structured gate, issue provenance, repository/worktree/branch binding, Requirement authorization, active goal reference, milestones, handoffs, pending action, exact bindings, gaps, and loop history; the Agent must not write these fields. The controller also owns `coder_agent` fields `coder_thread_id`, `coder_model`, `coder_effort`, `active_task`, `completed_tasks`, `last_checkpoint`, `replacement_generation`, `replacement_reason`, and `prior_coder_thread_id`, recording them through controller commands. On reply, run `flowctl status` and revalidate before resuming.
 

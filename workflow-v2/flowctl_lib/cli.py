@@ -131,7 +131,7 @@ def _parser():
     authorization_commands = authorization.add_subparsers(dest="authorization_command", required=True)
     validate = authorization_commands.add_parser('validate')
     validate.add_argument('--state', required=True)
-    validate.add_argument('--kind', required=True, choices=('external_review', 'production_replay'))
+    validate.add_argument('--kind', required=True, choices=('external_review',))
     validate.add_argument('--manifest', required=True)
     validate.add_argument('--expected-revision', required=True, type=int)
     for name in ("decide", "amend"):
@@ -140,13 +140,6 @@ def _parser():
         command.add_argument("--kind", required=True, choices=("external_review", "production_replay"))
         command.add_argument("--decision", required=True)
         command.add_argument("--expected-revision", required=True, type=int)
-    replay = commands.add_parser('replay')
-    replay_commands = replay.add_subparsers(dest='replay_command', required=True)
-    for name in ('validate', 'run', 'cleanup'):
-        command = replay_commands.add_parser(name)
-        command.add_argument('--state', required=True)
-        command.add_argument('--expected-revision', required=True, type=int)
-        command.add_argument('--manifest' if name == 'validate' else '--binding-id', required=True)
     return parser
 
 
@@ -178,7 +171,7 @@ def _parse_authorization_decision(raw, kind):
     allowed = (
         {"GRANTED", "DENIED"}
         if kind == "external_review"
-        else {"SANITIZED_LOCAL_REPLAY", "SKIP_PRODUCTION_REPLAY"}
+        else {"LOCAL_PRODUCTION_REPLAY", "SANITIZED_LOCAL_REPLAY", "SKIP_PRODUCTION_REPLAY"}
     )
     if type(value) is not str or value not in allowed:
         raise FlowctlError("AUTHORIZATION_DECISION_SCHEMA_INVALID")
@@ -275,16 +268,6 @@ def dispatch(args):
     if args.command == "signal" and args.signal_command == "record":
         _validate_command_admission(args.state)
         return {"ok": True, **record_signal(args.state, args.payload, args.expected_revision)}
-    if args.command == 'replay':
-        from .replay import validate_replay_manifest, run_replay, recover_replay_cleanup
-        _validate_command_admission(args.state)
-        if args.replay_command == 'validate':
-            return {'ok': True, **validate_replay_manifest(args.state, args.manifest, args.expected_revision)}
-        if args.replay_command == 'cleanup':
-            result = recover_replay_cleanup(args.state, args.binding_id, args.expected_revision)
-            return {'ok': result['status'] == 'PASSED', **result}
-        result = run_replay(args.state, args.binding_id, args.expected_revision)
-        return {'ok': result['status'] == 'PASSED', **result}
     if args.command == "authorization":
         if (isinstance(args.expected_revision, bool)
                 or not isinstance(args.expected_revision, int)
@@ -292,9 +275,6 @@ def dispatch(args):
             raise FlowctlError("INVALID_EXPECTED_REVISION")
         _validate_command_admission(args.state)
         if args.authorization_command == 'validate':
-            if args.kind == 'production_replay':
-                from .replay import validate_replay_manifest
-                return {'ok': True, **validate_replay_manifest(args.state, args.manifest, args.expected_revision)}
             from .review_package import validate_review_manifest
             return {'ok': True, **validate_review_manifest(args.state, args.manifest, args.expected_revision)}
         decision = _parse_authorization_decision(args.decision, args.kind)

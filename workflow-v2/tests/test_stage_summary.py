@@ -78,7 +78,7 @@ class StageSummaryTests(unittest.TestCase):
             self.assertEqual('已完成', value['status'])
             self.assertEqual(expected, value['result'])
 
-    def test_cleanup_block_has_priority_over_human_wait(self):
+    def test_legacy_cleanup_annotation_does_not_override_human_wait(self):
         value = self.summary({'current_stage': 'flow-integration', 'pending_action': 'human_gate',
             'authorizations': {'production_replay': {'bindings': [{'evidence': {'status': 'BLOCKED_CLEANUP'}}]}}})
-        self.assertEqual('阻塞中', value['status'])
+        self.assertEqual('等待中', value['status'])

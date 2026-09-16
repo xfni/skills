@@ -27,7 +27,7 @@ Direct invocation performs this same admission when no controller exists. It may
 
 ## Human interaction boundary
 
-After controller and worktree admission and before requirement work, `$flow-run` presents only the production_replay human decision for sanitized local production replay. External review is not an authorization gate. Replay decisions persist through controller-generated authorization IDs. Resume reuses an active ID while operation manifests remain inside its recorded scope; natural-language assent and stage-local phrases are not authorization. A changed decision follows the controller amendment transition instead of overwriting the prior record.
+After controller/worktree admission and before requirement work, `$flow-run` asks whether production data may be acquired and used for local testing. Flow does not own sanitization or data deletion proofs; project policy and host permissions remain authoritative. External review is not an authorization gate. Production decisions persist through authorization IDs; resume reuses active scope and changed decisions use the amendment transition.
 
 Read and enforce [the frozen worktree review contract](review-contract.md). Review the complete filtered frozen worktree with independent exploration; the root brief is not sole evidence. iBrain is organization-trusted; no external-review authorization gate. Reviewer returns stdout/API only and never writes worktree. Freeze by digest (no automatic commit); source/private snapshot verification and single-use package binding are controller-owned.
 

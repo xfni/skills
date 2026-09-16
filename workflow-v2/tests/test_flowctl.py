@@ -1072,19 +1072,13 @@ class AuthorizationTests(unittest.TestCase):
             (
                 "production hard exclusion removed",
                 lambda state: state["authorizations"]["production_replay"]["exclusions"].remove(
-                    "raw_production_data"
+                    "production_mutation"
                 ),
             ),
             (
                 "non-string hard exclusion",
                 lambda state: state["authorizations"]["external_review"]["exclusions"].__setitem__(
                     0, {"name": "credentials"}
-                ),
-            ),
-            (
-                "raw persistence allowed",
-                lambda state: state["authorizations"]["production_replay"].update(
-                    raw_persistence="GRANTED"
                 ),
             ),
             (
@@ -1097,12 +1091,6 @@ class AuthorizationTests(unittest.TestCase):
                 "git tracking allowed",
                 lambda state: state["authorizations"]["production_replay"].update(
                     git_tracking="GRANTED"
-                ),
-            ),
-            (
-                "cleanup disabled",
-                lambda state: state["authorizations"]["production_replay"].update(
-                    cleanup_required=False
                 ),
             ),
             (

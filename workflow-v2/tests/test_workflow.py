@@ -446,8 +446,8 @@ class WorkflowV2Tests(unittest.TestCase):
 
     def test_flow_initial_gate_is_production_replay_only(self):
         runner = self.skill("flow-run")
-        for value in ("生产数据回放授权", "允许脱敏后回放生产数据（推荐）",
-                      "不进行依赖生产数据的集成测试", "SANITIZED_LOCAL_REPLAY",
+        for value in ("生产数据回放授权", "允许使用生产数据进行本地测试（推荐）",
+                      "不进行依赖生产数据的集成测试", "LOCAL_PRODUCTION_REPLAY",
                       "SKIP_PRODUCTION_REPLAY", "flowctl authorization decide", "flowctl authorization amend"):
             self.assertIn(value, runner)
         self.assertNotIn("不允许外部审查", runner)
@@ -470,11 +470,10 @@ class WorkflowV2Tests(unittest.TestCase):
         contract = (ROOT / "review-contract.md").read_text()
         artifact = (ROOT / "artifact-contract.md").read_text()
         for value in ("Historical external_review records", "trusted vendors",
-                      "Production replay still requires", "single-use", "snapshot", "finally"):
+                      "Production-data use requires", "single-use", "snapshot", "finally"):
             self.assertIn(value, contract)
         self.assertIn("must not be treated as replay authority", artifact)
-        self.assertIn("does not carry or depend on a human external_review authorization", artifact)
-        self.assertIn("authorization_id", artifact)
+        self.assertIn("scoped authorization ID/revision", artifact)
 
     def test_spec_plan_code_share_frozen_review_policy(self):
         for name in ("flow-spec", "flow-plan", "flow-code"):
@@ -489,12 +488,12 @@ class WorkflowV2Tests(unittest.TestCase):
         plan = self.skill("flow-plan")
         integration = self.skill("flow-integration")
         for value in (
-            "production_replay authorization ID and revision",
-            "controller-validated replay operation manifest",
+            "production_replay",
+            "LOCAL_PRODUCTION_REPLAY",
         ):
             self.assertIn(value, plan)
             self.assertIn(value, integration)
-        self.assertIn("SANITIZED_LOCAL_REPLAY", integration)
+        self.assertIn("LOCAL_PRODUCTION_REPLAY", integration)
         self.assertIn("SKIP_PRODUCTION_REPLAY", integration)
         self.assertIn("must not ask for replay authorization again", integration)
         self.assertIn("flowctl authorization amend", integration)
@@ -632,8 +631,8 @@ class WorkflowV2Tests(unittest.TestCase):
         integration = self.skill("flow-integration")
         runner = self.skill("flow-run")
         for value in (
-            "SKIP_PRODUCTION_REPLAY", "Plan trace", "production-derived data",
-            "synthetic or isolated test-environment data", "integration_scenarios",
+            "SKIP_PRODUCTION_REPLAY", "acceptance claim", "production-derived data",
+            "synthetic or isolated test data", "integration_scenarios",
             "Prefer `integration_scenarios", "Extra descriptive fields",
         ):
             self.assertIn(value, plan)
