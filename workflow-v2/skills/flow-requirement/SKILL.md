@@ -5,6 +5,10 @@ description: Use when the user explicitly requests structured feature-requiremen
 
 # Flow Requirement
 
+For every human question, confirmation or blocked/recovery message, read and apply Human-readable interruption in `../../orchestration-contract.md`, also in Direct mode. Explain the actual problem, prior checks, smallest requested action and next step; internal errors/bindings are optional diagnostics, not the user's task. This changes wording, not gates or authority.
+
+Agent leads action selection and semantic judgment; controller records current-action facts. Apply the cooperation and optional disposition rules in `../../flowctl-contract.md`: registration/resume do not replan or automatically withdraw guarantees, and pending_action is advisory. Missing historical metadata or tool uncertainty goes to safe diagnosis, not a new human/business gate. Never fabricate receipts, revive explicit revocations or bypass actual pauses/host permissions.
+
 Read and enforce `../../flow-contract.md`; silently verify its issue, controller, and worktree invariants at stage entry.
 Read and follow `../../artifact-contract.md` for every artifact revision, canonical SHA-256 digest, and approval operation.
 When `FLOW_RUN_CONTEXT` is present, also read and follow `../../orchestration-contract.md`; return its signal instead of a manual next-skill instruction.
@@ -14,6 +18,8 @@ Read and enforce `../../flowctl-contract.md`. Run `flowctl status` at entry, `fl
 Turn a feature idea into an evidence-backed `requirement.md` through human brainstorming followed by an autonomous agent swarm. This stage explores choices and uncertainty; it must not create intent.md or make the human's product commitment.
 
 **REQUIRED SUB-SKILL:** Use flow-brainstorm for the human brainstorming substage. If it is unavailable, end `BLOCKED_DEPENDENCY`; do not invoke `superpowers:brainstorming` or silently reproduce another brainstorming flow.
+
+For any missing PMS/brainstorming/swarm dependency, name the unavailable capability and what cannot run, checked availability, and the required installer/maintainer action. Keep BLOCKED_DEPENDENCY or role identifiers in optional diagnostics; do not ask the user to waive the missing role or authorize root substitution. A PMS access failure alone is PMS_UNAVAILABLE evidence, not an invented product blocker.
 
 ## Context preflight
 
@@ -72,6 +78,8 @@ CONSTRAINT_SCENARIO-*; controls; residual risks
 
 Emit the delimited body, integrity, and approval regions defined by the artifact contract. Use `READY_FOR_INTENT` only after every intent-changing product choice is resolved; implementation choices may remain unknown. Use `BLOCKED` only when a missing fact prevents meaningful candidates. Use `DRAFT` when useful analysis exists but candidate consequences remain incomplete; round 8 ends as `DRAFT` when neither other state applies.
 
-Before asking for authorization, show a short `Decision Brief`: problem and affected user; selected option and smallest delivery boundary; explicit non-goals; key tradeoffs; at most three highest-impact `Constraint Interaction` scenarios with controls and residual risk; unresolved human decisions; and the bound revision/digest. The full Requirement remains evidence and is available for inspection, but authorization is requested against this digest-bound brief rather than requiring the human to digest the entire document unaided.
+Before asking for authorization, show a short `Decision Brief`: problem and affected user; selected option and smallest delivery boundary; explicit non-goals; key tradeoffs; at most three highest-impact `Constraint Interaction` scenarios with controls and residual risk; and unresolved human decisions. Record the brief's bound revision/digest in evidence or optional diagnostics, not as a required human-readable decision item. The full Requirement remains evidence and is available for inspection, but authorization is requested against this digest-bound brief rather than requiring the human to digest the entire document unaided.
 
 Ask once for explicit human authorization of that exact binding and for downstream Flow to continue autonomously inside it. Record the authorization in the approval envelope and controller. Under `FLOW_RUN_CONTEXT`, return `FLOW_RUN_HUMAN_GATE` for this authorization, then `FLOW_RUN_HANDOFF` to `$flow-run`; otherwise stop and suggest explicit `$flow-intent` invocation. Any unresolved product choice must be asked here rather than deferred as a routine Intent gate.
+
+The visible authorization question says what will be delivered and excluded, its success boundary and key residual risks, then “确认按这个范围继续，还是需要修改？” Explain that confirmation authorizes the subsequent intent, planning, coding and tests within this boundary. The human confirms that displayed brief, not a digest string; the Agent records its exact binding. For a round-limit DRAFT or missing product fact, show the actual unresolved tradeoff and smallest next question/options; do not lead with round numbers, role votes, missing receipt IDs or ask to approve an unresolved outcome.

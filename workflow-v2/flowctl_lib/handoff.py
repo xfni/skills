@@ -97,7 +97,7 @@ def _attempt_boundary_current(attempt, artifact, snapshot_digest=None):
     return True
 
 
-def accept_handoff(state_path, handoff_path, expected_state_revision):
+def accept_handoff(state_path, handoff_path, expected_state_revision, disposition_path=None):
     handoff = _read_handoff(handoff_path)
     with locked_state(state_path, expected_state_revision) as state:
         reject_if_paused(state)
@@ -118,8 +118,16 @@ def accept_handoff(state_path, handoff_path, expected_state_revision):
         if current["digest"] != artifact["digest"] or not current["approval"]["valid"]:
             raise FlowctlError("ARTIFACT_DRIFT")
         snapshot_digest = None
+        from .dispositions import apply_disposition
+        apply_disposition(state, handoff['artifact_key'], disposition_path)
         if handoff["from_stage"] == "flow-code":
-            snapshot_digest = verify_recorded_snapshot(state, handoff["artifact_key"])["snapshot_digest"]
+            from .snapshot import capture_snapshot
+            actual = capture_snapshot(state['worktree_path'], artifact['path'])
+            record = state.get('dispositions', {}).get(handoff['artifact_key'], {})
+            if record.get('snapshot_digest') == actual['snapshot_digest']:
+                snapshot_digest = actual['snapshot_digest']
+            else:
+                snapshot_digest = verify_recorded_snapshot(state, handoff["artifact_key"])["snapshot_digest"]
         completion_quality = "COMPLETE"
         if handoff["from_stage"] in REVIEWED_STAGES:
             reject_if_unclassified_exhausted(state, handoff["artifact_key"], artifact["digest"])
@@ -144,6 +152,9 @@ def accept_handoff(state_path, handoff_path, expected_state_revision):
             open_external = [
                 attempt for attempt in state["reviews"]["attempts"].values()
                 if attempt.get("artifact_key") == handoff["artifact_key"]
+                and attempt.get('artifact_digest') == artifact['digest']
+                and (artifact['type'] != 'code' or attempt.get('snapshot_digest') ==
+                     state.get('snapshots', {}).get(handoff['artifact_key'], {}).get('snapshot_digest'))
                 and attempt.get("backend") in {"cursor", "ibrain", "consistency"}
                 and attempt.get("status") == "STARTED"
                 and attempt.get("eligible", True)
@@ -161,6 +172,8 @@ def accept_handoff(state_path, handoff_path, expected_state_revision):
                     and item.get("backend") == "cursor"
                     and item.get("classification") in {"RUN_ERROR", "PROTOCOL_ERROR"}
                     and item.get("artifact_digest") == artifact["digest"] and item.get("eligible", True)
+                    and not item.get('revoked')
+                    and (artifact['type'] != 'code' or item.get('snapshot_digest') == snapshot_digest)
                 ]
                 ibrain_failures = [
                     item for item in state["reviews"]["attempts"].values()
@@ -168,6 +181,8 @@ def accept_handoff(state_path, handoff_path, expected_state_revision):
                     and item.get("backend") == "ibrain"
                     and item.get("classification") in {"RUN_ERROR", "PROTOCOL_ERROR"}
                     and item.get("artifact_digest") == artifact["digest"] and item.get("eligible", True)
+                    and not item.get('revoked')
+                    and (artifact['type'] != 'code' or item.get('snapshot_digest') == snapshot_digest)
                 ]
                 fallback_active = state['reviews']['lanes'].get(handoff['artifact_key'], {}).get('ibrain_activated')
                 if (len(cursor_failures) < 2 and not fallback_active) or len(ibrain_failures) < 2:
@@ -196,10 +211,13 @@ def accept_handoff(state_path, handoff_path, expected_state_revision):
             durable_gaps = list(state.get("open_gaps", []))
             if integration_results:
                 plan = state.get("artifacts", {}).get(f"plan:{milestone}")
-                if not plan:
-                    raise FlowctlError("INTEGRATION_PLAN_BINDING_MISMATCH")
-                validate_integration_results_against_plan(integration_results, plan)
+                if plan:
+                    validate_integration_results_against_plan(integration_results, plan)
                 scenario_quality = integration_results["status"]
+                if scenario_quality not in {'PASSED', 'COMPLETE_WITH_DEFECT'}:
+                    raise FlowctlError('INTEGRATION_NOT_PASSED', status=scenario_quality)
+                from .integration_results import require_completion_evidence
+                require_completion_evidence(current, state['worktree_path'])
                 if scenario_quality == "COMPLETE_WITH_DEFECT":
                     replay = state.get("authorizations", {}).get("production_replay", {})
                     if (replay.get("status") != "GRANTED"
@@ -215,7 +233,7 @@ def accept_handoff(state_path, handoff_path, expected_state_revision):
             expected_quality = "COMPLETE_WITH_DEFECT" if durable_gaps else scenario_quality
             state["open_gaps"] = durable_gaps
             completion_quality = expected_quality
-            state["milestones"][milestone]["status"] = "completed"
+            state.setdefault('milestones', {}).setdefault(milestone, {'dependencies': []})['status'] = 'completed'
             ready = _ready_milestones(state)
             if ready:
                 state["active_milestone"] = ready[0]
@@ -230,6 +248,11 @@ def accept_handoff(state_path, handoff_path, expected_state_revision):
         state["current_stage"] = expected_next
         state["pending_action"] = None if expected_next == "complete" else f"produce:{expected_next.removeprefix('flow-')}"
         state.pop("pending_signal", None)
+        from .state import validate_upstream
+        validate_upstream(state, current)
+        from .reviews import review_receipt_facts
+        facts = {backend: review_receipt_facts(state, handoff['artifact_key'], backend, artifact['digest'])
+                 for backend in ('gpt', 'cursor', 'ibrain', 'consistency')} if artifact['type'] in {'spec', 'plan', 'code'} else {}
         state = commit_state(state_path, state, "HANDOFF_ACCEPTED", handoff)
         return {
             "ok": True, "state_revision": state["state_revision"],
@@ -243,6 +266,8 @@ def accept_handoff(state_path, handoff_path, expected_state_revision):
                 "explanation": "交接已接受；遗留问题见 open_gaps" if state.get("open_gaps") else "交接已接受",
             },
             "open_gaps": state.get("open_gaps", []),
+            "warnings": current.get('warnings', []),
+            "review_facts": facts,
         }
 
 

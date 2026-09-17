@@ -1,12 +1,10 @@
 import json
 import copy
-import hashlib
 from pathlib import Path
-
 from .artifacts import KINDS, read_artifact as verify_artifact, is_reviewable_artifact
 from .errors import FlowctlError
 from .integration_results import validate_integration_results_against_plan
-from .state import DEPENDENCIES, ORDER, artifact_key, commit_state, locked_state, validate_approval_authority
+from .state import ORDER, artifact_key, commit_state, locked_state, validate_approval_authority, reconcile_requirement_route
 from .snapshot import capture_snapshot
 
 
@@ -22,22 +20,20 @@ def _review_eligible_after_resume(attempt, artifact, recorded_snapshot=None, act
     )
 
 
-def _production_replay_gaps(artifacts):
-    gaps = []
-    for key, artifact in artifacts.items():
-        if artifact.get("type") != "integration" or not artifact.get("integration_results"):
-            continue
-        for gap in artifact["integration_results"]["gaps"]:
-            gaps.append({**gap, "artifact_key": key})
-    return gaps
-
 
 def _integration_result_valid(artifact, artifacts, state=None):
     result = artifact.get("integration_results")
     milestone = artifact.get("milestone_id")
     plan = artifacts.get(f"plan:{milestone}") if milestone else None
     if not plan:
-        return False
+        if result is None:
+            return False
+        from .integration_results import validate_integration_results
+        try:
+            validate_integration_results(result)
+        except FlowctlError:
+            return False
+        return True
     if result is None:
         return not plan.get('integration_contract_present') and plan.get('integration_scenarios') is None
     try:
@@ -107,7 +103,11 @@ def resume_flow(issue_id, repo_root, inputs_path=None, controller=None):
     if (controller.get('issue_id') != issue_id
             or Path(controller.get('worktree_path', '')).resolve() != Path(repo_root).resolve()):
         controller = {}
-    candidates = _candidate_map(issue_id, repo_root, inputs_path)
+    initial_discovery = (not controller.get('artifacts')
+                         and not controller.get('invalidated_checkpoints')
+                         and controller.get('current_stage', 'flow-requirement') == 'flow-requirement')
+    candidates = (_candidate_map(issue_id, repo_root, inputs_path)
+                  if inputs_path or not controller or initial_discovery else {})
     for key, recorded in controller.get('artifacts', {}).items():
         if inputs_path and (key in candidates or key.partition(':')[0] in candidates):
             continue  # An explicit replacement for this key remains authoritative.
@@ -177,11 +177,11 @@ def _restore_current_code_gpt_lane(state):
     """Rebuild a lost index from exact, revalidated receipts; no new review."""
     from .reviews import has_passed_review
     for key, artifact in state['artifacts'].items():
-        if artifact['type'] != 'code' or has_passed_review(state, key, 'gpt', artifact['digest']):
+        if artifact['type'] != 'code' or not has_passed_review(state, key, 'gpt', artifact['digest']):
             continue
         attempts = [a for a in state['reviews']['attempts'].values()
                     if a.get('artifact_key') == key and a.get('backend') == 'gpt'
-                    and a.get('artifact_digest') == artifact['digest'] and a.get('eligible')
+                    and a.get('artifact_digest') == artifact['digest']
                     and a.get('invalidated_by') in {None, 'resume', key}]
         if not attempts or any(a.get('status') == 'STARTED' for a in attempts):
             continue
@@ -194,200 +194,66 @@ def _restore_current_code_gpt_lane(state):
             state['reviews']['lanes'].setdefault(key, {})['gpt'] = candidate
 
 
-def _accepted_code_handoff(state_path, state, key):
-    """Find a real accepted transition in the controller-bound event chain."""
-    path = Path(state_path).with_name('flow-events.jsonl')
-    if not path.exists():
-        return False
-    previous, accepted, seq = None, False, 0
-    for seq, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
-        try:
-            event = json.loads(line)
-            if not isinstance(event, dict):
-                return False
-            digest = event.pop('event_digest')
-        except (ValueError, KeyError, TypeError):
-            return False
-        canonical = json.dumps(event, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()
-        if (event.get('seq') != seq or event.get('previous_event_digest') != previous
-                or digest != 'sha256:' + hashlib.sha256(canonical).hexdigest()):
-            return False
-        previous = digest
-        if event.get('event') == 'HANDOFF_ACCEPTED' and event.get('artifact_key') == key:
-            accepted = (event.get('from_stage') == 'flow-code'
-                        and event.get('next_stage') in {'flow-integration', 'auto'}
-                        and event.get('issue_id') == state['issue_id']
-                        and event.get('run_id') == state['run_id'])
-        elif (event.get('event') == 'HANDOFF_ACCEPTED'
-              and event.get('artifact_key') == key.replace('code:', 'integration:')):
-            accepted = False
-        elif (event.get('event') == 'ARTIFACT_REGISTERED'
-              and event.get('artifact_key') in {'requirement', 'intent', 'roadmap', key,
-                                              key.replace('code:', 'plan:'), key.replace('code:', 'spec:')}):
-            accepted = False
-        elif key in event.get('invalidated_artifacts', []):
-            accepted = False
-    return bool(accepted and previous == state.get('event_head') and seq == state['state_revision'])
 
-
-def reconcile_resume(state_path, discovery, expected_state_revision):
+def reconcile_resume(state_path, discovery, expected_state_revision, disposition_path=None):
     """Atomically make the verified discovery chain the controller checkpoint."""
     with locked_state(state_path, expected_state_revision) as state:
         original_state = copy.deepcopy(state)
         if discovery["issue_id"] != state["issue_id"]:
             raise FlowctlError("ISSUE_MISMATCH")
-        route_context = state.get("route_back_context")
-        pending_route_back = bool(route_context)
-        if state.get("pending_signal", {}).get("signal") in {"FLOW_RUN_HUMAN_GATE", "FLOW_RUN_BLOCKED"}:
+        if state.get('pending_signal', {}).get('signal') in {'FLOW_RUN_HUMAN_GATE', 'FLOW_RUN_BLOCKED'}:
+            if disposition_path is not None:
+                from .state import reject_if_paused
+                reject_if_paused(state)
             return state
-        route_owner_stage = route_context.get("owner_stage") if pending_route_back else None
-        route_milestone = route_context.get("milestone_id") if pending_route_back else None
-        artifacts = dict(discovery["valid_artifacts"])
-        tombstones = state.get("invalidated_checkpoints", {})
-        high_water_marks = dict(state.get("artifact_high_water", {}))
-        for key, current in state.get("artifacts", {}).items():
-            prior = high_water_marks.get(key)
-            if not prior or current["revision"] > prior["revision"]:
-                high_water_marks[key] = {"revision": current["revision"], "digest": current["digest"]}
-        for kind in ORDER:
-            for key, artifact in list(artifacts.items()):
-                if artifact["type"] != kind:
-                    continue
-                high_water = high_water_marks.get(key)
-                if high_water:
-                    artifact['revision'] = max(artifact['revision'], high_water['revision'] +
-                        (artifact['digest'] != high_water['digest']))
-                tombstone = tombstones.get(key)
-                if tombstone and artifact['digest'] == tombstone['digest']:
-                    artifacts.pop(key)
-                    continue
-                if tombstone:
-                    artifact['revision'] = max(artifact['revision'], tombstone['revision'] + 1)
-                if not _deps_satisfied(artifact, artifacts):
-                    artifacts.pop(key)
-                    continue
-                if artifact["type"] == "integration" and not _integration_result_valid(
-                    artifact, artifacts, state,
-                ):
-                    artifacts.pop(key)
-        for artifact in artifacts.values():
-            validate_approval_authority({**state, "artifacts": artifacts}, artifact)
-        keep_reviews = {}
-        actual_snapshots = {}
-        for attempt_id, attempt in state["reviews"]["attempts"].items():
-            artifact = artifacts.get(attempt.get("artifact_key"))
-            recorded = state.get("snapshots", {}).get(attempt.get("artifact_key"))
-            if artifact and artifact["type"] == "code" and recorded:
-                key = attempt['artifact_key']
-                if key not in actual_snapshots:
-                    actual_snapshots[key] = capture_snapshot(state['worktree_path'], artifact['path']
-                                                            if recorded.get('evidence_exclusion') else None)
-            actual_snapshot = actual_snapshots.get(attempt.get('artifact_key'))
-            eligible = _review_eligible_after_resume(attempt, artifact, recorded, actual_snapshot)
-            attempt["eligible"] = eligible
-            lane = state.get('reviews', {}).get('lanes', {}).get(attempt.get('artifact_key'), {}).get('gpt', {})
-            carried = (attempt.get('backend') == 'gpt' and lane.get('carried_forward')
-                       and lane.get('attempt_id') == attempt_id
-                       and attempt.get('invalidated_by') == attempt.get('artifact_key'))
-            if (not attempt["eligible"] and not carried
-                    and attempt.get('invalidated_by') in {None, 'resume', attempt.get('artifact_key')}):
-                attempt["invalidated_by"] = "resume"
-            keep_reviews[attempt_id] = attempt
-        state["artifacts"] = artifacts
-        state["artifact_high_water"] = high_water_marks
-        state["reviews"]["attempts"] = keep_reviews
+        # Resume refreshes available facts. It does not choose a new stage or
+        # reinterpret missing historical files as withdrawal of accepted work.
+        for key, artifact in discovery['valid_artifacts'].items():
+            tombstone = state.get('invalidated_checkpoints', {}).get(key)
+            if tombstone and tombstone['digest'] == artifact['digest']:
+                continue  # Explicit withdrawal cannot be undone by discovery.
+            if artifact['type'] == 'integration' and not _integration_result_valid(artifact, discovery['valid_artifacts'], state):
+                continue
+            recorded = state['artifacts'].get(key)
+            validate_approval_authority(state, artifact)
+            high_water = state.setdefault('artifact_high_water', {}).get(key)
+            if high_water:
+                artifact['revision'] = max(artifact['revision'], high_water['revision'] +
+                    (artifact['digest'] != high_water['digest']))
+            if artifact['type'] == 'integration':
+                from .integration_results import validate_result_replacement
+                validate_result_replacement(recorded, artifact)
+            if recorded and recorded['digest'] != artifact['digest']:
+                state.setdefault('artifact_history', []).append({'artifact_key': key, 'artifact': recorded})
+            state['artifacts'][key] = artifact
+            state['artifact_high_water'][key] = {
+                'revision': artifact['revision'], 'digest': artifact['digest']}
+        if reconcile_requirement_route(state, state['artifacts']) and state['current_stage'] == 'flow-requirement':
+            state['pending_action'] = 'handoff:requirement'
         _restore_current_code_gpt_lane(state)
-        state["open_gaps"] = [
-            gap for gap in state.get("open_gaps", [])
-            if gap.get("type") != "PRODUCTION_REPLAY_GAP" or not gap.get("artifact_key")
-        ] + _production_replay_gaps(artifacts)
-        if not pending_route_back:
-            state.pop("pending_signal", None)
-        roadmap = artifacts.get("roadmap")
-        if roadmap and roadmap.get("target_milestones"):
-            state["target_milestones"] = roadmap["target_milestones"]
-            state["milestones"] = {
-                item: {"status": "pending", "dependencies": roadmap["milestone_dependencies"].get(item, [])}
-                for item in roadmap["target_milestones"]
-            }
-            for key, item in artifacts.items():
-                if item["type"] == "integration" and item.get("milestone_id") in state["milestones"]:
-                    state["milestones"][item["milestone_id"]]["status"] = "completed"
-        else:
-            state["target_milestones"] = []
-            state["milestones"] = {}
-        state["active_milestone"] = None
-        if state["milestones"]:
-            ready = [
-                item for item in state["target_milestones"]
-                if state["milestones"][item]["status"] == "pending"
-                and all(state["milestones"][dependency]["status"] == "completed"
-                        for dependency in state["milestones"][item]["dependencies"])
-            ]
-            if ready:
-                milestone = ready[0]
-                state["active_milestone"] = milestone
-                deepest = next(
-                    (artifacts.get(f"{kind}:{milestone}") for kind in ("code", "plan", "spec")
-                     if artifacts.get(f"{kind}:{milestone}")),
-                    None,
-                )
-                if deepest is None:
-                    state["current_stage"] = "flow-spec"
-                    state["pending_action"] = "produce:spec"
-                else:
-                    key = artifact_key(deepest["type"], milestone)
-                    state["current_stage"] = f"flow-{deepest['type']}"
-                    from .reviews import next_review_action
-                    state['pending_action'] = next_review_action(state, key)
-            elif all(item["status"] == "completed" for item in state["milestones"].values()):
-                state["current_stage"] = "complete"
-                state["pending_action"] = None
-            else:
-                raise FlowctlError("MILESTONE_DEPENDENCY_DEADLOCK")
-        else:
-            deepest = None
-            for artifact in artifacts.values():
-                if deepest is None or ORDER.index(artifact["type"]) > ORDER.index(deepest["type"]):
-                    deepest = artifact
-            if deepest is None:
-                state["current_stage"] = "flow-requirement"
-                state["pending_action"] = "produce:requirement"
-            else:
-                state["current_stage"] = f"flow-{deepest['type']}"
-                if deepest['type'] in {'spec', 'plan', 'code'}:
-                    state['active_milestone'] = deepest.get('milestone_id')
-                    if state['active_milestone']:
-                        milestone = state['active_milestone']
-                        state['target_milestones'] = [milestone]
-                        state['milestones'] = {milestone: {'status': 'pending', 'dependencies': []}}
-                        state['entry_stage'] = state['current_stage']
-                    from .reviews import next_review_action
-                    state['pending_action'] = next_review_action(state, artifact_key(deepest['type'], state['active_milestone']))
-                else:
-                    state["pending_action"] = f"handoff:{deepest['type']}"
-        milestone = state.get('active_milestone')
-        code_key = f'code:{milestone}' if milestone else None
-        if (not pending_route_back and state.get('current_stage') == 'flow-code'
-                and code_key in artifacts
-                and original_state.get('artifacts', {}).get(code_key, {}).get('digest') == artifacts[code_key]['digest']
-                and _accepted_code_handoff(state_path, original_state, code_key)):
-            state['current_stage'] = 'flow-integration'
-            recorded = state.get('snapshots', {}).get(code_key)
-            actual = actual_snapshots.get(code_key)
-            drift = not recorded or not actual or recorded['snapshot_digest'] != actual['snapshot_digest']
-            state['pending_action'] = 'inspect:integration-snapshot' if drift else 'produce:integration'
-        if pending_route_back:
-            state["current_stage"] = route_owner_stage
-            state["pending_action"] = f"revise:{route_owner_stage.removeprefix('flow-')}"
-            if route_owner_stage.removeprefix("flow-") in {"spec", "plan", "code", "integration"}:
-                if not route_milestone:
-                    raise FlowctlError("MILESTONE_NOT_ACTIVE")
-                state["active_milestone"] = route_milestone
+        from .dispositions import apply_disposition
+        apply_disposition(state, artifact_key(state['current_stage'].removeprefix('flow-'),
+                                            state.get('active_milestone')), disposition_path)
+        if state.get('pending_signal', {}).get('signal') not in {'FLOW_RUN_HUMAN_GATE', 'FLOW_RUN_BLOCKED'}:
+            kind = state['current_stage'].removeprefix('flow-')
+            key = artifact_key(kind, state.get('active_milestone'))
+            if state.get('route_back_context'):
+                state['pending_action'] = 'revise:' + kind
+            elif kind in {'spec', 'plan', 'code'} and key in state['artifacts']:
+                from .reviews import next_review_action
+                state['pending_action'] = next_review_action(state, key)
+            elif kind == 'integration':
+                code_key = artifact_key('code', state.get('active_milestone'))
+                recorded = state.get('snapshots', {}).get(code_key)
+                code = state['artifacts'].get(code_key)
+                if recorded and code:
+                    actual = capture_snapshot(state['worktree_path'], code['path'] if recorded.get('evidence_exclusion') else None)
+                    if actual['snapshot_digest'] != recorded['snapshot_digest']:
+                        state['pending_action'] = 'inspect:integration-snapshot'
         if state == original_state:
             return state
-        return commit_state(state_path, state, "CHECKPOINT_RECONCILED", {
-            "artifact_keys": sorted(artifacts),
-            "deepest_valid_stage": discovery["deepest_valid_stage"],
-            "invalid_candidate_count": len(discovery["invalid_candidates"]),
+        return commit_state(state_path, state, 'CHECKPOINT_RECONCILED', {
+            'artifact_keys': sorted(discovery['valid_artifacts']),
+            'position_preserved': True,
+            'invalid_candidates': discovery['invalid_candidates'],
         })

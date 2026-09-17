@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 
 from .errors import FlowctlError
 
@@ -38,14 +39,68 @@ def validate_plan_integration_scenarios(contract):
 
 
 def require_integration_results(artifact, plan):
-    if plan is None:
-        raise FlowctlError('INTEGRATION_PLAN_BINDING_MISMATCH')
     result = artifact.get('integration_results')
     if result is None:
-        if plan.get('integration_contract_present') or plan.get('integration_scenarios') is not None:
-            raise FlowctlError('INTEGRATION_RESULTS_REQUIRED')
+        raise FlowctlError('INTEGRATION_RESULTS_REQUIRED', action='repair',
+                           missing=['terminal test result'], suggested_actions=['Record actual execution evidence; do not rebuild historical Plan'])
         return
-    validate_integration_results_against_plan(result, plan)
+    if plan is None:
+        validate_integration_results(result)
+    else:
+        validate_integration_results_against_plan(result, plan)
+
+
+def require_completion_evidence(artifact, worktree):
+    """Check identity/readability, not whether execution proves coverage."""
+    result = artifact.get('integration_results') or {}
+    target = result.get('test_object') or artifact.get('upstream', {}).get('code', {}).get('digest')
+    references = result.get('evidence')
+    if not isinstance(target, str) or not target.strip():
+        raise FlowctlError('INTEGRATION_TEST_OBJECT_REQUIRED', action='repair')
+    if isinstance(references, str):
+        references = [references]
+    if not isinstance(references, list) or not references:
+        raise FlowctlError('INTEGRATION_EXECUTION_EVIDENCE_REQUIRED', action='repair')
+    for reference in references:
+        try:
+            if not isinstance(reference, str) or not reference.strip():
+                raise ValueError('empty evidence')
+            file = Path(reference)
+            if not file.is_absolute():
+                file = Path(worktree) / file
+            file.read_bytes()
+        except (OSError, ValueError, TypeError) as exc:
+            raise FlowctlError('INTEGRATION_EXECUTION_EVIDENCE_REQUIRED', action='repair') from exc
+
+
+def validate_result_replacement(previous, current):
+    """A partial passing rerun cannot silently discard other known failures."""
+    old = previous.get('integration_results') if previous else None
+    new = current.get('integration_results')
+    if not old or not new:
+        return
+    unresolved = {item['scenario_id'] for item in old['scenarios']
+                  if item['status'] in {'FAILED', 'BLOCKED'}}
+    unresolved.update(old.get('_unresolved_observations', []))
+    resolved = {item['scenario_id'] for item in new['scenarios'] if item['status'] == 'PASSED'}
+    if new.get('status') not in {'PASSED', 'COMPLETE_WITH_DEFECT'}:
+        # Derived controller facts survive partial failure/startup reports;
+        # incoming caller metadata cannot erase prior observations.
+        new['_unresolved_observations'] = sorted(unresolved - resolved)
+        return
+    if not unresolved and old.get('status') not in {'FAILED', 'BLOCKED'}:
+        return
+    old_object = old.get('test_object') or previous.get('upstream', {}).get('code', {}).get('digest')
+    new_object = new.get('test_object') or current.get('upstream', {}).get('code', {}).get('digest')
+    if not old_object or not new_object or new.get('replaces') != previous['digest']:
+        raise FlowctlError('INTEGRATION_REPLACEMENT_REFERENCE_REQUIRED', action='repair')
+    if old_object != new_object and new.get('replaces_test_object') != old_object:
+        raise FlowctlError('INTEGRATION_REPLACEMENT_OBJECT_MISMATCH', action='repair')
+    if not unresolved and not new.get('resolution'):
+        raise FlowctlError('INTEGRATION_UNRESOLVED_OBSERVATIONS', missing=['aggregate failure resolution'])
+    if unresolved - resolved:
+        raise FlowctlError('INTEGRATION_UNRESOLVED_OBSERVATIONS', missing=sorted(unresolved - resolved))
+    new['_unresolved_observations'] = []
 
 
 def validate_production_replay_gap(gap):
@@ -115,6 +170,12 @@ def validate_integration_results(result):
         expected_status = "COMPLETE_WITH_DEFECT"
     else:
         expected_status = "PASSED"
+    # A known aggregate obstacle cannot disappear merely because a partial
+    # list contains only passing observations.
+    if result['status'] == 'FAILED':
+        expected_status = 'FAILED'
+    elif result['status'] == 'BLOCKED' and expected_status != 'FAILED':
+        expected_status = 'BLOCKED'
     result['status'] = expected_status
     if result["status"] == "PASSED" and (not executed_count or result["gaps"] or result["warnings"]):
         raise FlowctlError("INVALID_INTEGRATION_RESULTS")
@@ -122,7 +183,11 @@ def validate_integration_results(result):
 
 
 def validate_production_replay_gaps_against_plan(gaps, plan_artifact):
-    contract = validate_plan_integration_scenarios(plan_artifact.get("integration_scenarios"))
+    contract = plan_artifact.get('integration_scenarios')
+    try:
+        validate_plan_integration_scenarios(contract)
+    except FlowctlError:
+        return gaps
     planned = {item["scenario_id"]: item["production_dependency"] for item in contract["scenarios"]}
     seen = set()
     for gap in gaps:
@@ -149,14 +214,19 @@ def validate_integration_results_against_plan(result, plan_artifact):
             if gap.get('plan_revision') is None:
                 gap['plan_revision'] = result['plan_revision']
     validate_integration_results(result)
-    contract = validate_plan_integration_scenarios(plan_artifact.get("integration_scenarios"))
+    contract = plan_artifact.get('integration_scenarios')
+    try:
+        validate_plan_integration_scenarios(contract)
+    except FlowctlError:
+        result.setdefault('warnings', []).append('PLAN_COVERAGE_CALLER_ATTESTED')
+        return result
     if (result["plan_digest"] != plan_artifact.get("digest")
             or result["plan_revision"] != plan_artifact.get("revision")):
         raise FlowctlError("INTEGRATION_PLAN_BINDING_MISMATCH")
     expected = contract["scenarios"]
     if not {item['scenario_id'] for item in expected}.issubset(
             {item['scenario_id'] for item in result['scenarios']}):
-        raise FlowctlError("INTEGRATION_SCENARIO_SET_MISMATCH")
+        result.setdefault('warnings', []).append('PLAN_COVERAGE_CALLER_ATTESTED')
     by_id = {item["scenario_id"]: item for item in expected}
     for scenario in result["scenarios"]:
         if (scenario["status"] == "SKIPPED_AUTHORIZED_REPLAY"

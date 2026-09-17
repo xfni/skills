@@ -5,6 +5,10 @@ description: Use when a requirement workflow needs human exploration before auto
 
 # Flow Brainstorm
 
+For every human question, confirmation or blocked/recovery message, read and apply Human-readable interruption in `../../orchestration-contract.md`, also in Direct mode. Explain the actual problem, prior checks, smallest requested action and next step; internal errors/bindings are optional diagnostics, not the user's task. This changes wording, not gates or authority.
+
+Agent leads action selection and semantic judgment; controller records current-action facts. Apply the cooperation and optional disposition rules in `../../flowctl-contract.md`: registration/resume do not replan or automatically withdraw guarantees, and pending_action is advisory. Missing historical metadata or tool uncertainty goes to safe diagnosis, not a new human/business gate. Never fabricate receipts, revive explicit revocations or bypass actual pauses/host permissions.
+
 Read and enforce `../../flow-contract.md`. Verify the inherited issue and worktree binding silently before discussion; use its admission gate when directly invoked without a valid controller.
 
 Read and enforce `../../flowctl-contract.md`. Run `flowctl status` at entry. The skill must not edit the controller or event log; it returns semantic brainstorming input to its owner and cannot advance Flow itself.
@@ -23,7 +27,7 @@ Scale the number of questions to uncertainty. Stop when the problem and candidat
 
 ## Return contract
 
-Show a normalized `brainstorm_result` containing:
+Return to the owning Agent a normalized `brainstorm_result` containing:
 
 ```text
 status: DRAFT | CONFIRMED
@@ -38,6 +42,8 @@ uncertainties; questions for autonomous analysis
 ```
 
 Keep `status: DRAFT` while correcting the summary. Require human confirmation that it is accurate, then set `status: CONFIRMED`, record confirmer and time, and return control to `$flow-requirement` with the confirmed result and its exact source references.
+
+Present that confirmation as “这是讨论记录，请确认是否准确，或直接修改；确认后由两个 Agent 分析候选方案，这还不是最终开发授权。” Show the short problem/outcome/constraint summary and open choices, not the internal brainstorm_result fields. Do not combine it with final product authorization.
 
 This is a substage, not a delivery workflow: it must not write requirement.md, must not create a Spec or Plan, must not invoke `writing-plans`, and must not implement, commit, push, or dispatch the autonomous requirement-analysis roles. Those actions belong to their owning Flow stages.
 

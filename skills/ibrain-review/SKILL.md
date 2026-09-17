@@ -9,7 +9,15 @@ Own one bounded read-only review through the company iBrain Responses API. The c
 
 ## Trust, scope and credentials
 
-All iBrain models are organization-approved private deployments or confidentiality-bound trusted vendors. No human external-review authorization is required, and Cursor authorization never gates iBrain. Host sandbox/network permissions and sensitive-data exclusions still apply. Inside Flow, activation as Cursor backup still requires two controller-recorded retryable Cursor failures on the current artifact digest; findings never activate fallback.
+All iBrain models are organization-approved private deployments or confidentiality-bound trusted vendors. No human external-review authorization is required, and Cursor authorization never gates iBrain. Host sandbox/network permissions and sensitive-data exclusions still apply. Inside Flow, use the recorded external route: an explicit human iBrain selection needs no Cursor attempt; default Cursor backup requires two controller-recorded retryable Cursor failures on the current artifact digest. Findings never activate fallback.
+
+### Host permission application
+
+When sandbox/network escalation is necessary, give the host facts about the destination and payload, not only "Flow allows fallback". Verify the captured runner's actual Responses URL (currently http://ibrain.qiyi.domain/v1/responses), selected model, current issue/worktree/artifact and fresh manifest with repeated exclusions. Cite the applicable user-maintained iBrain trust policy separately from historical Cursor-only consent. State the bounded read-only operation, excluded data categories, binding/manifest evidence available, and protected credential-file use without its value. Report only verified package facts; a planned package is not an already-validated package. Do not dump file lists or production data into the justification.
+
+Example justification, filled with current verified facts: "依据适用的用户维护 iBrain 信任策略（私有部署或签署保密协议的供应商），请求向已核实的公司 iBrain Responses 地址发送本议题的过滤冻结代码视图，由 glm-5.3 只读审查。当前 manifest 排除生产数据、日志和密钥；新绑定及视图由控制器校验，结果经 API 返回，不修改工作树。此次申请仅请求宿主网络/执行权限，不以历史 Cursor 授权替代 iBrain 依据。" Narrow the statement if the actual exclusions or guarantees differ; never invent approval or claim a changed/unverified endpoint is covered.
+
+If the host rejects the operation, preserve the original refusal and do not execute indirectly, change tools/route to evade it or bypass Flow audit. When the host explicitly permits providing proof of authorization or low risk, perform read-only checks of policy, destination and filtered manifest first, then make at most one evidence-backed reapplication for the same scoped operation. Repeated refusal or a missing trust basis requires the specific missing human/host decision, not a generic repeated reviewer authorization prompt. A pre-process rejection is not a backend attempt, RUN_ERROR or consumed fallback retry. An existing host gate is cleared only through a bound controller resume after its actual conditions are satisfied; do not delete it or falsely declare permission granted.
 
 Read ~/.ibrain-review/API_KEY by default; --api-key-file may select another protected file. Never put credentials in prompts, repositories, arguments or evidence.
 

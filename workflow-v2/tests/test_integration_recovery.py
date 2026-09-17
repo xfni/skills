@@ -8,6 +8,7 @@ import test_flowctl as fixtures
 from flowctl_lib.state import load_state, commit_state
 from flowctl_lib.signals import record_signal
 from flowctl_lib.resume import resume_flow, reconcile_resume
+from flowctl_lib.reviews import has_passed_review
 import test_resume_receipts as receipt_fixtures
 
 
@@ -28,7 +29,8 @@ class IntegrationRecoveryTests(unittest.TestCase):
         result = reconcile_resume(fixture.path, discovery, state['state_revision'])
         self.assertEqual('flow-integration', result['current_stage'])
         self.assertEqual('inspect:integration-snapshot', result['pending_action'])
-        self.assertFalse(result['reviews']['attempts'][fixture.last_attempt]['eligible'])
+        self.assertTrue(result['reviews']['attempts'][fixture.last_attempt]['eligible'])
+        self.assertFalse(has_passed_review(result, 'code:M1', 'gpt', result['artifacts']['code:M1']['digest']))
         self.assertEqual(len(state['reviews']['attempts']), len(result['reviews']['attempts']))
 
     def test_drift_without_accepted_handoff_does_not_skip_code(self):
@@ -38,7 +40,7 @@ class IntegrationRecoveryTests(unittest.TestCase):
         (fixture.root / 'business.py').write_text('changed = True\n')
         state = fixture.resume()
         self.assertEqual('flow-code', state['current_stage'])
-        self.assertFalse(state['reviews']['attempts'][fixture.last_attempt]['eligible'])
+        self.assertFalse(has_passed_review(state, 'code:M1', 'gpt', state['artifacts']['code:M1']['digest']))
 
     def test_upstream_registration_invalidates_accepted_position(self):
         fixture = receipt_fixtures.ResumeReceiptTests()

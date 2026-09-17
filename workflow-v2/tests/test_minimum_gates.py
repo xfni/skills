@@ -8,7 +8,7 @@ import unittest
 import test_flowctl
 from flowctl_lib.errors import FlowctlError
 from flowctl_lib.handoff import accept_handoff, _read_handoff
-from flowctl_lib.reviews import begin_review, submit_review, record_process_result
+from flowctl_lib.reviews import begin_review, submit_review, record_process_result, has_passed_review
 from flowctl_lib.state import load_state, commit_state, register_artifact
 from flowctl_lib.integration_results import validate_integration_results_against_plan
 
@@ -124,8 +124,8 @@ class MinimumReviewGates(unittest.TestCase):
             path = self.fixture(root)
             state = load_state(path)
             spec_path = state['artifacts']['spec:M1']['path']
-            state.update(artifacts={}, current_stage='flow-requirement',
-                target_milestones=[], milestones={}, active_milestone=None)
+            state.update(artifacts={}, current_stage='flow-spec',
+                target_milestones=[], milestones={}, active_milestone='M1')
             state = commit_state(path, state, 'ARBITRARY_ENTRY_FIXTURE', {})
             inputs = root / 'input-map.json'
             inputs.write_text(json.dumps({'spec:M1': spec_path}))
@@ -149,7 +149,7 @@ class MinimumReviewGates(unittest.TestCase):
             state = register_artifact(path, spec, 'spec', 'M1', state['state_revision'])
             self.assertEqual(2, state['artifacts']['spec:M1']['revision'])
             self.assertEqual('review:gpt', state['pending_action'])
-            self.assertTrue(all(not item.get('eligible') for item in state['reviews']['attempts'].values()))
+            self.assertFalse(has_passed_review(state, 'spec:M1', 'gpt', state['artifacts']['spec:M1']['digest']))
 
 
 class MinimumArtifactAndTestGates(unittest.TestCase):

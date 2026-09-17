@@ -15,6 +15,8 @@ When the human specifies a directory, use that directory with the standard filen
 
 Default checkpoint discovery reads artifact type metadata inside `.ai/issue/<issue_id>/`; a custom filename is valid. For a custom location, pass an artifact-key-to-path map through `flowctl resume --inputs <json>`. Missing historical inputs are reported, not invented, and do not invalidate an otherwise usable current-stage document.
 
+Apply Human-readable interruption in `orchestration-contract.md` when a real naming/location conflict needs the human. Explain which document already exists and what would be overwritten; offer a proposed distinct name/location or correction rather than asking about path_rule, slug syntax, hashes or JSON input maps. The Agent builds those machine inputs. Missing historical paths are not a new gate when current work can proceed safely.
+
 Prefer three physically delimited regions in this order when writing new artifacts:
 
 ```text
@@ -36,7 +38,7 @@ The three-region layout is a writing convention, not a daily progression gate. R
 
 `confirmer` is `HUMAN` for the Flow-level Requirement authorization. Downstream artifacts may use `ORCHESTRATED`; the controller records available input bindings rather than demanding duplicate exact tuples in prose. This does not authorize changing product intent, bypassing reviews or fabricating consent. Arbitrary-node invocation uses the human's stated task boundary and never fabricates missing historical approval.
 
-A content change creates a new controller revision and invalidates affected review receipts and downstream artifacts, even when the model forgets to update `content_revision`. Moving unchanged content preserves its identity. An unchanged checkpoint explicitly invalidated by route-back cannot be reactivated merely by increasing a declared revision.
+A content change records a new controller revision and byte difference. Registration preserves execution position, downstream objects, original receipts, snapshots, gaps and coder context. Agent judges impact: material scope/implementation change uses explicit route-back and necessary review; clarification may use a caller-attested applicability disposition, never rewriting an old PASS. Moving unchanged content preserves its identity. An unchanged checkpoint explicitly invalidated by route-back cannot be reactivated merely by increasing a declared revision.
 
 Spec/Plan/Code review starts from a registered `DRAFT`, not from a fabricated approval. After required reviews, change the APPROVAL envelope only and register again; unchanged BODY retains its review identity. Draft admission never satisfies the approved-artifact handoff gate. See `flowctl-contract.md` for the controller's next-action lifecycle.
 

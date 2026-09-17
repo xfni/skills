@@ -11,7 +11,7 @@ from .state import ORDER, STAGE_BY_KIND, commit_state, locked_state
 
 SIGNALS = {"FLOW_RUN_HUMAN_GATE", "FLOW_RUN_BLOCKED", "FLOW_RUN_ROUTE_BACK", "FLOW_RUN_RESUMED"}
 COMMON = {"schema_version", "signal", "issue_id", "run_id", "stage", "cause", "evidence", "resume_condition"}
-OPTIONAL = {"owner_stage", "next_stage", "gate", "integration_results"}
+OPTIONAL = {"owner_stage", "next_stage", "gate", "integration_results", "pause_revision"}
 
 
 def _load(path):
@@ -31,8 +31,7 @@ def _load(path):
         and data["signal"] in {"FLOW_RUN_ROUTE_BACK", "FLOW_RUN_BLOCKED"}
     )
     has_results = 'integration_results' in data
-    if ((has_results and not integration_failure)
-            or (integration_failure and data['signal'] == 'FLOW_RUN_ROUTE_BACK' and not has_results)):
+    if has_results and not integration_failure:
         raise FlowctlError("SIGNAL_SCHEMA_INVALID", field="integration_results")
     if has_results:
         try:
@@ -57,6 +56,12 @@ def _invalidate_from(state, stage):
         if milestone_local and artifact["type"] in {"spec", "plan", "code", "integration"} and milestone and artifact.get("milestone_id") != milestone:
             continue
         removed.append(key)
+        state.setdefault('withdrawn_evidence', []).append({
+            'artifact_key': key, 'artifact': artifact,
+            'snapshot': state.get('snapshots', {}).get(key),
+            'gaps': [gap for gap in state.get('open_gaps', []) if gap.get('artifact_key') == key],
+            'withdrawn_by': stage,
+        })
         prior = tombstones.get(key)
         if not prior or artifact["revision"] >= prior["revision"]:
             tombstones[key] = {
@@ -69,6 +74,7 @@ def _invalidate_from(state, stage):
     for attempt_id, attempt in state["reviews"]["attempts"].items():
         if attempt.get("artifact_key") in removed_set:
             attempt["eligible"] = False
+            attempt['revoked'] = True
             attempt["invalidated_by"] = stage
     state["open_gaps"] = [gap for gap in state.get("open_gaps", []) if gap.get("artifact_key") not in removed_set]
     if any(key.startswith("code:") for key in removed):
@@ -95,8 +101,8 @@ def record_signal(state_path, payload_path, expected_state_revision):
             milestone = state.get("active_milestone")
             plan = state.get("artifacts", {}).get(f"plan:{milestone}") if milestone else None
             if not plan:
-                raise FlowctlError("INTEGRATION_PLAN_BINDING_MISMATCH")
-            if payload['signal'] == 'FLOW_RUN_BLOCKED' and not integration_results.get('gaps'):
+                validate_integration_results(integration_results)
+            elif payload['signal'] == 'FLOW_RUN_BLOCKED' and not integration_results.get('gaps'):
                 # A startup/environment failure is not a coverage or completion claim.
                 if (integration_results.get('plan_digest') not in {None, plan.get('digest')}
                         or integration_results.get('plan_revision') not in {None, plan.get('revision')}):
@@ -125,6 +131,20 @@ def record_signal(state_path, payload_path, expected_state_revision):
         if payload["signal"] == "FLOW_RUN_RESUMED":
             if paused not in {"FLOW_RUN_HUMAN_GATE", "FLOW_RUN_BLOCKED"}:
                 raise FlowctlError("FLOW_NOT_PAUSED")
+            pause_revision = state['pending_signal'].get('pause_revision')
+            if pause_revision is None:
+                events = Path(state_path).with_name('flow-events.jsonl')
+                for line in reversed(events.read_text(encoding='utf-8').splitlines()):
+                    event = json.loads(line)
+                    if event.get('event') == 'FLOW_SIGNAL_RECORDED' and event.get('signal') == paused:
+                        pause_revision = event['seq']
+                        break
+            if pause_revision is None:
+                raise FlowctlError('PAUSE_BINDING_REQUIRED', action='repair')
+            supplied_pause = payload.get('pause_revision', pause_revision)
+            if type(supplied_pause) is not int or supplied_pause != pause_revision:
+                raise FlowctlError('PAUSE_BINDING_MISMATCH', expected=pause_revision)
+            payload['pause_revision'] = pause_revision
             state.pop("pending_signal", None)
             state["pending_action"] = "resume"
         elif payload["signal"] == "FLOW_RUN_ROUTE_BACK":
@@ -147,6 +167,7 @@ def record_signal(state_path, payload_path, expected_state_revision):
                 "cause": payload["cause"],
                 "evidence": payload["evidence"],
                 "resume_condition": payload["resume_condition"],
+                'route_event': expected_state_revision + 1,
             }
             state.setdefault("invalidations", []).append({
                 "at_state_revision": expected_state_revision + 1,
@@ -165,6 +186,8 @@ def record_signal(state_path, payload_path, expected_state_revision):
             if gap not in state.setdefault("open_gaps", []):
                 state["open_gaps"].append(gap)
         if payload["signal"] != "FLOW_RUN_RESUMED":
+            if payload['signal'] in {'FLOW_RUN_HUMAN_GATE', 'FLOW_RUN_BLOCKED'}:
+                payload['pause_revision'] = expected_state_revision + 1
             state["pending_signal"] = payload
         state.setdefault("signal_history", []).append(payload)
         state = commit_state(state_path, state, "FLOW_SIGNAL_RECORDED", {

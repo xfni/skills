@@ -3,7 +3,7 @@
 An explicit-only, self-contained workflow with one continuous orchestrator and eight bounded stages. Flow itself owns issue admission, worktree isolation, artifact bindings, and orchestration; it remains complete without `AGENTS.md`.
 
 ```text
-$flow-run          -> detect/resume the deepest valid checkpoint and orchestrate the flow
+$flow-run          -> choose an initial entry / resume recorded position and orchestrate the flow
 $flow-brainstorm   -> confirmed human brainstorming result
 $flow-requirement  -> requirement.md
 $flow-intent       -> intent.md
@@ -15,6 +15,8 @@ $flow-integration  -> integration evidence
 ```
 
 ## Stage boundaries
+
+Agent leads the workflow; flowctl checks and records only deterministic facts for the requested action. Registration does not move stages or delete downstream history; resume preserves position. Historical real guarantees may support an unchanged implementation through an optional caller-attested disposition, never by rewriting PASS. Tool uncertainty returns to the Agent for diagnosis, not an automatic human unlock. See [cooperation commands and guarantee limits](flowctl-contract.md).
 
 | Skill | Responsibility | Human gate |
 | --- | --- | --- |

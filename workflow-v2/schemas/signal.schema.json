@@ -22,7 +22,6 @@
       "required": ["signal", "stage"]
     },
     "then": {
-      "required": ["integration_results"],
       "properties": {
         "integration_results": {"properties": {"status": {"const": "FAILED"}}}
       }
@@ -54,6 +53,7 @@
     "owner_stage": {"type": "string"},
     "next_stage": {"type": "string"},
     "gate": {"type": "string"},
+    "pause_revision": {"type": "integer", "minimum": 1},
     "integration_results": {"$ref": "#/$defs/integration_results"}
   },
   "$defs": {

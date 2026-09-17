@@ -5,6 +5,10 @@ description: Use when the user explicitly requests authoritative intent from an 
 
 # Flow Intent
 
+For every human question, confirmation or blocked/recovery message, read and apply Human-readable interruption in `../../orchestration-contract.md`, also in Direct mode. Explain the actual problem, prior checks, smallest requested action and next step; internal errors/bindings are optional diagnostics, not the user's task. This changes wording, not gates or authority.
+
+Agent leads action selection and semantic judgment; controller records current-action facts. Apply the cooperation and optional disposition rules in `../../flowctl-contract.md`: registration/resume do not replan or automatically withdraw guarantees, and pending_action is advisory. Missing historical metadata or tool uncertainty goes to safe diagnosis, not a new human/business gate. Never fabricate receipts, revive explicit revocations or bypass actual pauses/host permissions.
+
 Read and enforce `../../flow-contract.md`; silently verify its issue, controller, worktree, and Requirement authorization bindings at stage entry.
 Read and follow `../../artifact-contract.md` for every artifact revision, digest, and approval operation.
 When `FLOW_RUN_CONTEXT` is present, also read and follow `../../orchestration-contract.md`; return its signal instead of a manual next-skill instruction.
@@ -32,6 +36,8 @@ two or three genuine options
 each option's value, cost, risk, and scope impact
 agent recommendation and rationale
 ```
+
+Render Decision Cards as a plain product question, verified context and two or three options with consequences and recommendation; DEC-* is a reference, not something the human must interpret. State which outcome/scope changes and that the affected decision will be updated before continuation; do not ask about a missing optional metadata field.
 
 4. Let the human choose, modify, reject all, or propose another direction. Record the answer as `HUMAN` under `requirement.md`'s `Intent Decisions`, update affected fields, preserve rejected alternatives, and increment the requirement revision.
 5. Reverse-question the provisional choice with a realistic failure, boundary, permission, compatibility, or adoption counterexample. Reopen it only when the answer changes intent; only a changed decision or requirement field increments revision.
@@ -61,4 +67,6 @@ Accepted Product Risks; Rejected Alternatives
 Remaining Unknowns that cannot change intent
 ```
 
-Render the complete intent body and compute its canonical SHA-256 digest. Under `FLOW_RUN_CONTEXT`, sign it as `ORCHESTRATED` against the Requirement authorization without another human confirmation, report both paths/revisions/digests, and return `FLOW_RUN_HANDOFF` with `next_stage: flow-roadmap`. Under direct invocation, show the binding and require explicit confirmation before signing, then suggest `$flow-roadmap`. Do not include phases, architecture, or tasks; must not create roadmap itself.
+Render the complete intent body and compute its canonical SHA-256 digest. Under `FLOW_RUN_CONTEXT`, sign it as `ORCHESTRATED` against the Requirement authorization without another human confirmation, report both paths/revisions/digests, and return `FLOW_RUN_HANDOFF` with `next_stage: flow-roadmap`. Under direct invocation, show the human-readable commitments and document link, require explicit confirmation of that recorded binding before signing, then suggest `$flow-roadmap`. Do not include phases, architecture, or tasks; must not create roadmap itself.
+
+For the Direct confirmation, show the intended outcome, selected direction, scope/non-goals, success criteria and material risks, link the full document, then request confirmation or correction of those commitments. Keep the recorded binding in diagnostics, not as the question. Explain that confirmation finishes intent confirmation; Direct mode does not automatically run the whole Flow.

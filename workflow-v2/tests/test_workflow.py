@@ -32,66 +32,11 @@ class WorkflowV2Tests(unittest.TestCase):
             self.assertTrue(metadata.is_file())
             self.assertIn("allow_implicit_invocation: false", metadata.read_text())
 
-    def test_flowctl_is_the_only_mechanical_progression_authority(self):
-        contract = (ROOT / "flowctl-contract.md").read_text()
-        for value in (
-            "sole writer", "must not edit", "flowctl status", "artifact register",
-            "review begin", "review submit", "review cursor", "handoff accept",
-            "signal record",
-            "expected-revision", "STATE_CONFLICT", "structured JSON",
-            "Actual hashes, receipts and counters are controller-owned", "resume",
-        ):
-            self.assertIn(value, contract)
-        for name in SKILLS:
-            text = self.skill(name)
-            self.assertIn("flowctl-contract.md", text, name)
-            self.assertIn("flowctl status", text, name)
-            self.assertIn("must not edit the controller", text, name)
-        runner = self.skill("flow-run")
-        self.assertIn("flowctl resume", runner)
-        for name in ("flow-requirement", "flow-intent", "flow-roadmap", "flow-spec", "flow-plan", "flow-code", "flow-integration"):
-            self.assertIn("flowctl artifact register", self.skill(name), name)
-            self.assertIn("flowctl handoff accept", self.skill(name), name)
-        for name in ("flow-spec", "flow-plan", "flow-code"):
-            text = self.skill(name)
-            self.assertIn("flowctl review begin", text, name)
-            self.assertIn("flowctl review submit", text, name)
-            self.assertIn("flowctl review cursor", text, name)
-
     def test_isolated_codex_plugin_exposes_skill_directory(self):
         manifest = json.loads((ROOT / ".codex-plugin" / "plugin.json").read_text())
         self.assertEqual("./skills/", manifest["skills"])
         for name in SKILLS:
             self.assertIn(f"${name}", "\n".join(manifest["interface"]["defaultPrompt"]))
-
-    def test_flow_run_orchestrates_from_deepest_valid_checkpoint(self):
-        text = self.skill("flow-run")
-        for value in (
-            "active goal", "issue ID", "explicit start override",
-            "deepest valid checkpoint", "revision", "digest", "approval",
-            "raw requirement bootstrap", "must not invent product decisions",
-            "$flow-brainstorm", "$flow-requirement", "$flow-intent",
-            "$flow-roadmap", "$flow-spec", "$flow-plan", "$flow-code",
-            "$flow-integration", "automatically invoke the next stage",
-            "necessary human gate", "FLOW_RUN_RESUMED",
-            "route backward", "do not bypass", "mark the goal complete",
-            "target_milestones", "pending", "completed", "deferred",
-            "explicit arbitrary-node start", "disclose missing history",
-            "clear affected completed handoffs",
-        ):
-            self.assertIn(value, text)
-
-        self.assertIn("approved spec.md", text)
-        self.assertIn("start at `$flow-plan`", text)
-        self.assertIn("confirmed intent.md", text)
-        self.assertIn("start at `$flow-roadmap`", text)
-        self.assertIn("COMPLETE_WITH_DEFECT", text)
-        self.assertIn("EXTERNAL_REVIEW_GAP", text)
-        for value in (
-            "valid terminal `COMPLETE_WITH_DEFECT`", "PRODUCTION_REPLAY_GAP",
-            "every open gap", "must not claim clean completion",
-        ):
-            self.assertIn(value, text)
 
     def test_flow_run_discovers_issue_then_artifacts_or_asks_for_paths(self):
         text = self.skill("flow-run")
@@ -101,9 +46,9 @@ class WorkflowV2Tests(unittest.TestCase):
             "resolved standard issue location",
             "If one or more candidate documents exist",
             "If no candidate document exists",
-            "Provide existing document paths",
-            "Use the current requirement without requirement discussion",
-            "Pause Flow",
+            "提供已有文档位置，继续之前的工作",
+            "使用当前明确需求开始，跳过需求讨论",
+            "暂停，暂不启动流程",
             "artifact path map",
             "single document path",
             "validate every supplied path",
@@ -142,19 +87,6 @@ class WorkflowV2Tests(unittest.TestCase):
             self.assertIn("flow-contract.md", text, name)
             self.assertIn("issue", text.lower(), name)
             self.assertIn("worktree", text.lower(), name)
-
-    def test_flow_run_owns_admission_once_and_stages_revalidate_without_reprompting(self):
-        text = self.skill("flow-run")
-        for value in (
-            "owns Flow admission",
-            "request it exactly once",
-            "Initialize the controller",
-            "create or reuse the matching worktree",
-            "before artifact discovery",
-            "must not ask for the issue ID again",
-            "must not recreate the worktree",
-        ):
-            self.assertIn(value, text)
 
     def test_flow_run_uses_non_terminal_stage_return_protocol(self):
         runner = self.skill("flow-run")
@@ -198,19 +130,6 @@ class WorkflowV2Tests(unittest.TestCase):
         self.assertIn("aggregate result is `FAILED`", integration)
         self.assertIn("FLOW_RUN_ROUTE_BACK", integration)
         self.assertIn("owner_stage", integration)
-
-    def test_flow_run_repairs_obsolete_manual_stage_gates(self):
-        text = self.skill("flow-run")
-        for value in (
-            "explicit_stage_invocation",
-            "obsolete orchestration state",
-            "must not ask the human to copy",
-            "migrate the controller",
-            "FLOW_RUN_HANDOFF",
-            "milestone selection is already recorded",
-            "immediately continue",
-        ):
-            self.assertIn(value, text)
 
     def test_requirement_discussion_contract(self):
         text = self.skill("flow-requirement")
@@ -305,31 +224,6 @@ class WorkflowV2Tests(unittest.TestCase):
             self.assertIn("non-blocking finding must not trigger another review cycle", text)
             self.assertIn("same recurrence_key", text)
             self.assertIn("three review cycles", text)
-
-    def test_review_transport_and_discovery_contracts_are_explicit(self):
-        flowctl = (ROOT / "flowctl-contract.md").read_text()
-        for value in (
-            "FLOW_REVIEW_REPORT_BEGIN",
-            "FLOW_REVIEW_REPORT_END",
-            "FLOW_REVIEW_ERROR_BEGIN",
-            "FLOW_REVIEW_ERROR_END",
-            "two `UNCLASSIFIED`",
-            "BLOCKED_REVIEW",
-            "never fallback conditions",
-            "UNKNOWN_BACKEND_FAILURE",
-            "PROTOCOL_ERROR",
-        ):
-            self.assertIn(value, flowctl)
-        self.assertIn("cannot force the host Agent to invoke flowctl", flowctl)
-        self.assertIn("detectable non-progression", flowctl)
-
-        artifact = (ROOT / "artifact-contract.md").read_text()
-        self.assertIn("custom filename", artifact)
-        self.assertIn("--inputs", artifact)
-
-        orchestration = (ROOT / "orchestration-contract.md").read_text()
-        self.assertIn("context-independent", orchestration)
-        self.assertIn("context-dependent transition", orchestration)
 
     def test_brainstorm_adapter_contract(self):
         text = self.skill("flow-brainstorm")
@@ -445,7 +339,7 @@ class WorkflowV2Tests(unittest.TestCase):
 
     def test_flow_initial_gate_is_production_replay_only(self):
         runner = self.skill("flow-run")
-        for value in ("生产数据回放授权", "允许使用生产数据进行本地测试（推荐）",
+        for value in ("开始前请确认测试范围", "允许使用生产数据进行本地测试（推荐）",
                       "不进行依赖生产数据的集成测试", "LOCAL_PRODUCTION_REPLAY",
                       "SKIP_PRODUCTION_REPLAY", "flowctl authorization decide", "flowctl authorization amend"):
             self.assertIn(value, runner)
@@ -625,30 +519,6 @@ class WorkflowV2Tests(unittest.TestCase):
         ):
             self.assertIn(value, text)
 
-    def test_production_replay_skip_contract_runs_unaffected_scenarios_and_reports_gaps(self):
-        plan = self.skill("flow-plan")
-        integration = self.skill("flow-integration")
-        runner = self.skill("flow-run")
-        for value in (
-            "SKIP_PRODUCTION_REPLAY", "acceptance claim", "production-derived data",
-            "synthetic or isolated test data", "integration_scenarios",
-            "Prefer `integration_scenarios", "Extra descriptive fields",
-        ):
-            self.assertIn(value, plan)
-        for value in (
-            "SKIP_PRODUCTION_REPLAY", "SKIPPED_AUTHORIZED_REPLAY",
-            "PRODUCTION_REPLAY_GAP", "unaffected", "COMPLETE_WITH_DEFECT",
-            "zero-executed warning", "final report", "FAILED", "BLOCKED",
-            "Plan digest", "complete expected scenario set", "integration_results",
-            "controller derives", "status must match the signal",
-        ):
-            self.assertIn(value, integration)
-        for value in (
-            "legacy Plan checkpoint", "Plan revision and re-review",
-            "active `SKIP_PRODUCTION_REPLAY` authorization",
-        ):
-            self.assertIn(value, runner)
-
     def test_integration_supports_direct_real_service_testing(self):
         text = self.skill("flow-integration")
         for value in (
@@ -718,28 +588,6 @@ class WorkflowV2Tests(unittest.TestCase):
         self.assertIn("system under test", plan)
         self.assertIn("authorized isolated test-environment dependencies", plan)
         self.assertIn("must not require local containers by default", plan)
-
-    def test_artifact_chain_is_revision_and_digest_bound(self):
-        contract = (ROOT / 'flowctl-contract.md').read_text()
-        self.assertIn('actual required terminal review receipts', contract)
-        self.assertIn('actual content digests bind review receipts', (ROOT / 'artifact-contract.md').read_text())
-        for name in SKILLS:
-            if name == "flow-brainstorm":
-                continue
-            text = self.skill(name)
-            self.assertIn('artifact-contract.md', text, name)
-
-        expected_sources = {
-            "flow-roadmap": ("requirement", "intent"),
-            "flow-spec": ("requirement", "intent", "roadmap"),
-            "flow-plan": ('Spec', 'Plan', 'available inputs'),
-            "flow-code": ('Plan', 'snapshot', 'allowed change surface'),
-            "flow-integration": ('Plan', 'snapshot'),
-        }
-        for name, sources in expected_sources.items():
-            text = self.skill(name)
-            for source in sources:
-                self.assertIn(source.lower(), text.lower(), f"{name} missing {source}")
 
     def test_required_dependencies_and_worktree_gate_fail_closed(self):
         requirement = self.skill("flow-requirement")

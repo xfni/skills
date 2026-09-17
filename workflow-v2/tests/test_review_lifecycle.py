@@ -87,6 +87,89 @@ class ReviewLifecycleTests(unittest.TestCase):
                 with self.assertRaises(FlowctlError):
                     accept_handoff(self.state_path, handoff, self.state()['state_revision'])
 
+    def test_invalidated_old_reviews_do_not_exhaust_new_code(self):
+        state = self.state()
+        state['current_stage'] = 'flow-code'
+        commit_state(self.state_path, state, 'TEST_CODE_STAGE', {})
+        for revision in (1, 2, 3):
+            path, _ = fixtures.write_artifact(self.root, 'code', milestone='M1', revision=revision,
+                                             approval_status='DRAFT')
+            register_artifact(self.state_path, path, 'code', 'M1', self.state()['state_revision'])
+            record_snapshot(self.state_path, 'code:M1', self.state()['state_revision'])
+            self.review('gpt', kind='code')
+        path, _ = fixtures.write_artifact(self.root, 'code', milestone='M1', revision=4,
+                                         approval_status='DRAFT')
+        register_artifact(self.state_path, path, 'code', 'M1', self.state()['state_revision'])
+        record_snapshot(self.state_path, 'code:M1', self.state()['state_revision'])
+        self.assertEqual('review:gpt', self.state()['pending_action'])
+        self.review('gpt', kind='code')
+        self.assertEqual(4, len(self.state()['reviews']['attempts']))
+
+    def test_current_content_review_limit_still_blocks(self):
+        for _ in range(3):
+            self.review('gpt', 'INCOMPLETE', [dict(summary='Need remaining observation', blocking_status='NON_BLOCKING')])
+        self.assertEqual('repair:review:cycle-limit', self.state()['pending_action'])
+        with self.assertRaisesRegex(FlowctlError, 'REVIEW_CYCLE_LIMIT'):
+            self.review('gpt', 'INCOMPLETE', [dict(summary='Need remaining observation', blocking_status='NON_BLOCKING')])
+
+    def test_resume_reconciles_approved_replacement_requirement_route(self):
+        from flowctl_lib.signals import record_signal
+        state = self.state()
+        route = self.state_path.parent / 'route.json'
+        route.write_text(json.dumps(dict(schema_version=1, signal='FLOW_RUN_ROUTE_BACK',
+            issue_id='BCS-710', run_id=state['run_id'], stage='flow-spec',
+            next_stage='flow-requirement', owner_stage='flow-requirement',
+            cause='Replace scope', evidence='Human scope decision', resume_condition='Approve replacement')))
+        record_signal(self.state_path, route, state['state_revision'])
+        path, _ = fixtures.write_artifact(self.state_path.parent, 'requirement', revision=2,
+                                         approval_status='READY_FOR_INTENT')
+        inputs = self.state_path.parent / 'replacement-inputs.json'
+        inputs.write_text(json.dumps({'requirement': str(path)}))
+        state = self.state()
+        discovery = resume_flow('BCS-710', self.root, inputs, controller=state)
+        reconciled = reconcile_resume(self.state_path, discovery, state['state_revision'])
+        self.assertIsNone(reconciled['route_back_context'])
+        self.assertEqual('handoff:requirement', reconciled['pending_action'])
+        context = state['route_back_context']
+        reconciled['route_back_context'] = context
+        reconciled['pending_action'] = 'revise:requirement'
+        commit_state(self.state_path, reconciled, 'TEST_LEGACY_STALE_CONTEXT', {})
+        repaired = register_artifact(self.state_path, path, 'requirement', None, self.state()['state_revision'])
+        self.assertIsNone(repaired['route_back_context'])
+        self.assertEqual('handoff:requirement', repaired['pending_action'])
+        reconciled = repaired
+        before = reconciled['state_revision']
+        idem = register_artifact(self.state_path, path, 'requirement', None, before)
+        self.assertEqual(before, idem['state_revision'])
+
+    def test_historical_consistency_annotation_does_not_block_fresh_review(self):
+        self.review('gpt'); self.review('cursor')
+        state = self.state()
+        state['reviews']['lanes']['spec:M1']['consistency_attempts'] = 3
+        commit_state(self.state_path, state, 'TEST_LEGACY_CONSISTENCY_COUNT', {})
+        self.assertEqual('review:consistency', self.resume()['pending_action'])
+        self.review('consistency')
+        self.assertEqual('handoff:spec', self.state()['pending_action'])
+
+    def test_draft_replacement_keeps_requirement_route(self):
+        from flowctl_lib.signals import record_signal
+        state = self.state()
+        route = self.state_path.parent / 'route.json'
+        route.write_text(json.dumps(dict(schema_version=1, signal='FLOW_RUN_ROUTE_BACK',
+            issue_id='BCS-710', run_id=state['run_id'], stage='flow-spec',
+            next_stage='flow-requirement', owner_stage='flow-requirement',
+            cause='Replace scope', evidence='Human scope decision', resume_condition='Approve replacement')))
+        record_signal(self.state_path, route, state['state_revision'])
+        path, _ = fixtures.write_artifact(self.state_path.parent, 'requirement', revision=2,
+                                         approval_status='DRAFT')
+        inputs = self.state_path.parent / 'replacement-inputs.json'
+        inputs.write_text(json.dumps({'requirement': str(path)}))
+        state = self.state()
+        discovery = resume_flow('BCS-710', self.root, inputs, controller=state)
+        reconciled = reconcile_resume(self.state_path, discovery, state['state_revision'])
+        self.assertIsNotNone(reconciled['route_back_context'])
+        self.assertEqual('revise:requirement', reconciled['pending_action'])
+
     def test_envelope_approval_does_not_invalidate_receipts(self):
         path, _ = fixtures.write_artifact(self.state_path.parent, 'spec', milestone='M1', approval_status='DRAFT')
         register_artifact(self.state_path, path, 'spec', 'M1', self.state()['state_revision'])
@@ -135,7 +218,7 @@ class ReviewLifecycleTests(unittest.TestCase):
         self.review('gpt')
         self.review('cursor', 'FAILED', [dict(summary='Fix rule', blocking_status='BLOCKING')])
         path, _ = fixtures.write_artifact(self.state_path.parent, 'spec', milestone='M1', revision=2)
-        state = register_artifact(self.state_path, path, 'spec', 'M1', self.state()['state_revision'])
+        state = fixtures.register_clarification(self.state_path, path, 'spec', 'M1', self.state()['state_revision'])
         self.assertEqual('review:cursor', state['pending_action'])
         state = self.resume()
         self.assertEqual('review:cursor', state['pending_action'])
@@ -194,7 +277,7 @@ class ReviewLifecycleTests(unittest.TestCase):
         self.review('gpt'); self.failure('cursor'); self.failure('cursor')
         self.review('ibrain', 'FAILED', [dict(summary='Fix behavior', blocking_status='BLOCKING')])
         path, _ = fixtures.write_artifact(self.state_path.parent, 'spec', milestone='M1', revision=2)
-        register_artifact(self.state_path, path, 'spec', 'M1', self.state()['state_revision'])
+        fixtures.register_clarification(self.state_path, path, 'spec', 'M1', self.state()['state_revision'])
         self.assertEqual('review:ibrain', self.resume()['pending_action'])
         self.review('ibrain'); self.review('consistency'); self.handoff()
 
@@ -212,7 +295,7 @@ class ReviewLifecycleTests(unittest.TestCase):
         self.review('gpt'); self.failure('cursor'); self.failure('cursor')
         self.review('ibrain', 'FAILED', [dict(summary='Fix behavior', blocking_status='BLOCKING')])
         path, _ = fixtures.write_artifact(self.state_path.parent, 'spec', milestone='M1', revision=2)
-        register_artifact(self.state_path, path, 'spec', 'M1', self.state()['state_revision'])
+        fixtures.register_clarification(self.state_path, path, 'spec', 'M1', self.state()['state_revision'])
         self.failure('ibrain'); self.failure('ibrain')
         self.assertEqual('review:consistency', self.state()['pending_action'])
         self.review('consistency')

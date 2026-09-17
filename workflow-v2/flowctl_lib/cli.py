@@ -29,6 +29,8 @@ def _parser():
     init.add_argument("--branch", required=True)
     init.add_argument("--state")
     init.add_argument("--run-id")
+    init.add_argument('--stage', default='flow-requirement', choices=('flow-requirement', 'flow-intent', 'flow-roadmap', 'flow-spec', 'flow-plan', 'flow-code', 'flow-integration'))
+    init.add_argument('--milestone')
 
     status = commands.add_parser("status")
     status.add_argument("--state", required=True)
@@ -49,6 +51,7 @@ def _parser():
     register.add_argument("--type", required=True)
     register.add_argument("--milestone")
     register.add_argument("--expected-revision", required=True, type=int)
+    register.add_argument('--disposition')
 
     resume = commands.add_parser("resume")
     resume.add_argument("--issue", required=True)
@@ -56,6 +59,7 @@ def _parser():
     resume.add_argument("--inputs")
     resume.add_argument("--state", required=True)
     resume.add_argument("--expected-revision", required=True, type=int)
+    resume.add_argument('--disposition')
 
     review = commands.add_parser("review")
     review_commands = review.add_subparsers(dest="review_command", required=True)
@@ -110,6 +114,7 @@ def _parser():
     accept.add_argument("--state", required=True)
     accept.add_argument("--handoff", required=True)
     accept.add_argument("--expected-revision", required=True, type=int)
+    accept.add_argument('--disposition')
 
     goal = commands.add_parser("goal", help="Runtime Goal reference only; not runtime activation")
     goal_commands = goal.add_subparsers(dest="goal_command", required=True)
@@ -131,6 +136,7 @@ def _parser():
     capture.add_argument("--state", required=True)
     capture.add_argument("--artifact-key", required=True)
     capture.add_argument("--expected-revision", required=True, type=int)
+    capture.add_argument('--disposition')
 
     signal = commands.add_parser("signal")
     signal_commands = signal.add_subparsers(dest="signal_command", required=True)
@@ -214,13 +220,25 @@ def dispatch(args):
         return {'ok': True, 'state': select_external_review(args.state, args.backend, args.reason, args.expected_revision)}
     if args.command == "init":
         state_path = Path(args.state) if args.state else _default_state(args.repo, args.issue)
-        state = initialize_state(state_path, args.issue, args.repo, args.branch, args.run_id)
+        state = initialize_state(state_path, args.issue, args.repo, args.branch, args.run_id,
+                                 args.stage, args.milestone)
         validate_admission(state)
         return {"ok": True, "state_path": str(state_path.resolve()), "state": state}
     if args.command == "status":
         state = read_consistent_state(args.state)
         admission = validate_admission(state)
-        return {"ok": True, "state": state, "admission": admission, "stage_summary": stage_summary(state)}
+        result = {"ok": True, "state": state, "admission": admission, "stage_summary": stage_summary(state)}
+        from .state import artifact_key
+        key = artifact_key(state['current_stage'].removeprefix('flow-'), state.get('active_milestone'))
+        artifact = state['artifacts'].get(key)
+        if artifact and artifact['type'] in {'spec', 'plan', 'code'}:
+            from .reviews import review_receipt_facts
+            try:
+                result['review_facts'] = {backend: review_receipt_facts(state, key, backend, artifact['digest'])
+                                          for backend in ('gpt', 'cursor', 'ibrain', 'consistency')}
+            except (FlowctlError, OSError, KeyError) as exc:
+                result['warnings'] = ['REVIEW_FACTS_UNAVAILABLE:' + str(getattr(exc, 'code', type(exc).__name__))]
+        return result
     if args.command == "audit":
         state = read_consistent_state(args.state)
         return {"ok": True, "audit": audit_state(state)}
@@ -229,7 +247,7 @@ def dispatch(args):
         return {"ok": True, "artifact": value}
     if args.command == "artifact" and args.artifact_command == "register":
         _validate_command_admission(args.state)
-        value = register_artifact(args.state, args.path, args.type, args.milestone, args.expected_revision)
+        value = register_artifact(args.state, args.path, args.type, args.milestone, args.expected_revision, args.disposition)
         return {"ok": True, "state": value}
     if args.command == "resume":
         admitted = _validate_command_admission(args.state)
@@ -237,7 +255,7 @@ def dispatch(args):
             raise FlowctlError("WORKTREE_MISMATCH")
         result = resume_flow(args.issue, args.repo, args.inputs, controller=admitted)
         result["discovered_next_stage"] = result["next_stage"]
-        result["state"] = reconcile_resume(args.state, result, args.expected_revision)
+        result["state"] = reconcile_resume(args.state, result, args.expected_revision, args.disposition)
         result["next_stage"] = None if result["state"]["current_stage"] == "complete" else result["state"]["current_stage"]
         result["pending_action"] = result["state"]["pending_action"]
         return result
@@ -273,7 +291,7 @@ def dispatch(args):
         return {"ok": True, "review": value}
     if args.command == "handoff" and args.handoff_command == "accept":
         _validate_command_admission(args.state)
-        return accept_handoff(args.state, args.handoff, args.expected_revision)
+        return accept_handoff(args.state, args.handoff, args.expected_revision, args.disposition)
     if args.command == "goal" and args.goal_command == "record":
         _validate_command_admission(args.state)
         return {"ok": True, "state": record_runtime_goal(args.state, args.payload, args.expected_revision)}
@@ -282,7 +300,7 @@ def dispatch(args):
         return {"ok": True, "state": update_coder_state(args.state, args.payload, args.expected_revision)}
     if args.command == "snapshot" and args.snapshot_command == "capture":
         _validate_command_admission(args.state)
-        return {"ok": True, **record_snapshot(args.state, args.artifact_key, args.expected_revision)}
+        return {"ok": True, **record_snapshot(args.state, args.artifact_key, args.expected_revision, args.disposition)}
     if args.command == "signal" and args.signal_command == "record":
         _validate_command_admission(args.state)
         return {"ok": True, **record_signal(args.state, args.payload, args.expected_revision)}

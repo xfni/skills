@@ -56,27 +56,37 @@ def capture_snapshot(root, evidence_path=None):
     return payload
 
 
-def record_snapshot(state_path, artifact_key, expected_state_revision):
+def record_snapshot(state_path, artifact_key, expected_state_revision, disposition_path=None):
     with locked_state(state_path, expected_state_revision) as state:
         reject_if_paused(state)
         if artifact_key not in state["artifacts"]:
             raise FlowctlError("ARTIFACT_NOT_REGISTERED", artifact_key=artifact_key)
         artifact = state['artifacts'][artifact_key]
+        from .dispositions import apply_disposition
+        apply_disposition(state, artifact_key, disposition_path)
         snapshot = capture_snapshot(state['worktree_path'], artifact['path'] if artifact['type'] == 'code' else None)
         existing = state.setdefault("snapshots", {}).get(artifact_key)
-        if existing and existing["snapshot_digest"] == snapshot["snapshot_digest"]:
+        if existing and existing["snapshot_digest"] == snapshot["snapshot_digest"] and disposition_path is None:
             return {"snapshot": existing, "state_revision": state["state_revision"]}
         bound_reviews = [
             attempt for attempt in state["reviews"]["attempts"].values()
             if attempt.get("artifact_key") == artifact_key and attempt.get("eligible", True)
+            and attempt.get('artifact_digest') == artifact['digest']
         ]
-        if existing and bound_reviews:
+        from .dispositions import applicable
+        record = state.get('dispositions', {}).get(artifact_key, {})
+        reuse = (record.get('snapshot_digest') == snapshot['snapshot_digest']
+                 and any(applicable(state, artifact_key, source, artifact['digest'])
+                         for source in record.get('source_attempts', {})))
+        if existing and bound_reviews and not reuse:
             raise FlowctlError(
                 "SNAPSHOT_REVIEW_BINDING_EXISTS",
                 attempt_ids=[item["attempt_id"] for item in bound_reviews],
             )
+        if existing:
+            state.setdefault('snapshot_history', []).append({'artifact_key': artifact_key, 'snapshot': existing})
         state.setdefault("snapshots", {})[artifact_key] = snapshot
-        if state['artifacts'][artifact_key]['type'] == 'code':
+        if state['current_stage'] == 'flow-code' and artifact['type'] == 'code':
             from .reviews import next_review_action
             state['pending_action'] = next_review_action(state, artifact_key)
         state = commit_state(state_path, state, "CODE_SNAPSHOT_RECORDED", {

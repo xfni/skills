@@ -32,9 +32,13 @@ class StageSummaryTests(unittest.TestCase):
                 root = Path(tmp)
                 state_path = test_flowctl.ReviewAndHandoffTests()._state_with_spec(root)
                 state = load_state(state_path)
+                execution_log = root / 'execution.log'
+                execution_log.write_text('fixture: local request passed')
                 for kind in ('plan', 'integration'):
                     path, _ = test_flowctl.write_artifact(root, kind, milestone='M1', legacy_plan=True,
-                        approval_status='PASSED' if kind == 'integration' else 'APPROVED')
+                        approval_status='PASSED' if kind == 'integration' else 'APPROVED',
+                        integration_results={'status': 'PASSED', 'test_object': 'local-service/M1',
+                            'evidence': [str(execution_log)], 'scenarios': [{'scenario_id': 'TESTCASE-1', 'status': 'PASSED'}]} if kind == 'integration' else None)
                     state['artifacts'][kind + ':M1'] = read_artifact(path)
                 state['current_stage'] = 'flow-integration'
                 state['pending_action'] = 'handoff:integration'

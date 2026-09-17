@@ -46,16 +46,18 @@ def _atomic_json(path, data):
             os.unlink(tmp_name)
 
 
-def initialize_state(path, issue_id, repo_root, branch, run_id=None):
+def initialize_state(path, issue_id, repo_root, branch, run_id=None,
+                     stage='flow-requirement', milestone=None):
     resolved = Path(path).expanduser().resolve()
     lock_path = resolved.with_suffix(resolved.suffix + ".lock")
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a+") as lock:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-        return _initialize_state_locked(resolved, issue_id, repo_root, branch, run_id)
+        return _initialize_state_locked(resolved, issue_id, repo_root, branch, run_id, stage, milestone)
 
 
-def _initialize_state_locked(path, issue_id, repo_root, branch, run_id=None):
+def _initialize_state_locked(path, issue_id, repo_root, branch, run_id=None,
+                             stage='flow-requirement', milestone=None):
     _recover_transaction(path)
     if not re.fullmatch(r"[A-Z][A-Z0-9]+-[1-9][0-9]*", issue_id):
         raise FlowctlError("INVALID_ISSUE_ID", issue_id=issue_id)
@@ -77,6 +79,10 @@ def _initialize_state_locked(path, issue_id, repo_root, branch, run_id=None):
                 expected_branch=branch, actual_branch=state["branch"],
             )
         return _migrate_state_locked(path, state)
+    if stage not in STAGE_BY_KIND.values():
+        raise FlowctlError('INVALID_ENTRY_STAGE', stage=stage)
+    if stage in {'flow-spec', 'flow-plan', 'flow-code', 'flow-integration'} and not milestone:
+        raise FlowctlError('MILESTONE_REQUIRED', stage=stage)
     now = utc_now()
     state = {
         "schema_version": 1,
@@ -88,8 +94,8 @@ def _initialize_state_locked(path, issue_id, repo_root, branch, run_id=None):
         "repo_root": str(Path(repo_root).expanduser().resolve()),
         "worktree_path": str(Path(repo_root).expanduser().resolve()),
         "branch": branch,
-        "current_stage": "flow-requirement",
-        "pending_action": "produce:requirement",
+        "current_stage": stage,
+        "pending_action": 'produce:' + stage.removeprefix('flow-'),
         "artifacts": {},
         "reviews": {"attempts": {}, "lanes": {}},
         "snapshots": {},
@@ -97,7 +103,7 @@ def _initialize_state_locked(path, issue_id, repo_root, branch, run_id=None):
         "open_gaps": [],
         "target_milestones": [],
         "milestones": {},
-        "active_milestone": None,
+        "active_milestone": milestone,
         "invalidations": [],
         "invalidated_checkpoints": {},
         "artifact_high_water": {},
@@ -366,7 +372,10 @@ def validate_upstream(state, artifact, strict=False):
             key = _dependency_key(kind, dependency, artifact['milestone_id'])
             registered = state['artifacts'].get(key)
             if registered:
-                artifact['upstream'][dependency] = dict(digest=registered['digest'], revision=registered['revision'])
+                claimed = artifact['upstream'].get(dependency)
+                if claimed and (claimed.get('digest') != registered['digest']
+                                or claimed.get('revision') != registered['revision']):
+                    artifact.setdefault('warnings', []).append('UPSTREAM_BINDING_CHANGED:' + key)
             else:
                 artifact.setdefault('warnings', []).append('HISTORICAL_INPUT_UNAVAILABLE:' + key)
         return
@@ -392,7 +401,7 @@ def validate_upstream(state, artifact, strict=False):
 def validate_approval_authority(state, artifact, strict=False):
     approval = artifact["approval"]
     if artifact["type"] == "requirement":
-        if approval["confirmer"] != "HUMAN":
+        if approval['valid'] and approval["confirmer"] != "HUMAN":
             raise FlowctlError("HUMAN_REQUIREMENT_APPROVAL_REQUIRED")
         return
     if not strict:
@@ -419,30 +428,27 @@ def validate_approval_authority(state, artifact, strict=False):
         raise FlowctlError("INVALID_ORCHESTRATED_APPROVAL")
 
 
-def _downstream_keys(state, changed_kind, milestone):
-    changed_index = ORDER.index(changed_kind)
-    result = []
-    for key, artifact in state["artifacts"].items():
-        kind = artifact["type"]
-        if ORDER.index(kind) <= changed_index:
-            continue
-        if changed_kind in {"spec", "plan", "code", "integration"} and artifact.get("milestone_id") != milestone:
-            continue
-        result.append(key)
-    return result
+
+def reconcile_requirement_route(state, artifacts):
+    """Clear a stale route only for an approved replacement of its tombstone."""
+    context = state.get('route_back_context')
+    if not context or context.get('owner_stage') != 'flow-requirement':
+        return False
+    replacement = artifacts.get('requirement')
+    tombstone = state.get('invalidated_checkpoints', {}).get('requirement')
+    if not (replacement and tombstone
+            and replacement['digest'] != tombstone['digest']
+            and replacement['revision'] > tombstone['revision']
+            and replacement['approval']['valid']
+            and replacement['approval']['confirmer'] == 'HUMAN'):
+        return False
+    state['route_back_context'] = None
+    return True
 
 
-def register_artifact(state_path, path, kind, milestone, expected_state_revision):
+def register_artifact(state_path, path, kind, milestone, expected_state_revision, disposition_path=None):
     with locked_state(state_path, expected_state_revision) as state:
         reject_if_paused(state)
-        current_kind = state["current_stage"].removeprefix("flow-")
-        if current_kind == "complete":
-            raise FlowctlError("FLOW_ALREADY_COMPLETE")
-        if ORDER.index(kind) > ORDER.index(current_kind):
-            raise FlowctlError(
-                "STAGE_NOT_ADMITTED", current_stage=state["current_stage"],
-                attempted_stage=STAGE_BY_KIND[kind],
-            )
         artifact = read_artifact(path, expected_type=kind, expected_issue=state["issue_id"], expected_milestone=milestone)
         if not is_reviewable_artifact(artifact):
             raise FlowctlError("APPROVAL_STALE", artifact=str(path))
@@ -469,10 +475,23 @@ def register_artifact(state_path, path, kind, milestone, expected_state_revision
         if tombstone:
             artifact['revision'] = max(artifact['revision'], tombstone['revision'] + 1)
         current = state["artifacts"].get(key)
+        if kind == 'integration':
+            from .integration_results import validate_result_replacement
+            validate_result_replacement(current, artifact)
         if current and all(current.get(field) == artifact.get(field) for field in ("path", "revision", "digest")):
-            if current['approval'] == artifact['approval']:
+            if kind == 'requirement' and reconcile_requirement_route(state, {key: artifact}):
+                state['artifacts'][key] = artifact
+                if state['current_stage'] == 'flow-requirement':
+                    state['pending_action'] = 'handoff:requirement'
+                return commit_state(state_path, state, 'ROUTE_BACK_RECONCILED', {
+                    'artifact_key': key, 'digest': artifact['digest'],
+                    'revision': artifact['revision'], 'owner_stage': 'flow-requirement',
+                })
+            if current['approval'] == artifact['approval'] and disposition_path is None:
                 return state
             state['artifacts'][key] = artifact
+            from .dispositions import apply_disposition
+            apply_disposition(state, key, disposition_path)
             if kind in {'spec', 'plan', 'code'} and STAGE_BY_KIND[kind] == state['current_stage']:
                 from .reviews import next_review_action
                 state['pending_action'] = next_review_action(state, key)
@@ -482,52 +501,15 @@ def register_artifact(state_path, path, kind, milestone, expected_state_revision
         if current and artifact['digest'] != current['digest']:
             artifact['revision'] = max(artifact['revision'], current['revision'] + 1)
 
-        invalidated = _downstream_keys(state, kind, milestone or artifact["milestone_id"])
-        for downstream in invalidated:
-            state["artifacts"].pop(downstream, None)
-            state.get("snapshots", {}).pop(downstream, None)
-        state.get("snapshots", {}).pop(key, None)
-        invalidated_set = set(invalidated) | {key}
-        state["open_gaps"] = [
-            gap for gap in state.get("open_gaps", [])
-            if gap.get("artifact_key") not in invalidated_set
-        ]
-        if any(item.startswith("code:") for item in invalidated_set):
-            state["coder_agent"] = {}
-        if kind in {"requirement", "intent"}:
-            state["target_milestones"] = []
-            state["milestones"] = {}
-            state["active_milestone"] = None
-        lane = state.setdefault("reviews", {}).setdefault("lanes", {}).get(key, {})
-        repair_backend = lane.get("repair_backend")
-        if repair_backend in {"cursor", "ibrain"}:
-            if lane.get('gpt'):
-                lane['gpt']['carried_forward'] = True
-            preserved = {
-                "gpt": lane.get("gpt"),
-                "consistency_attempts": lane.get("consistency_attempts", 0),
-                "ibrain_activated": lane.get("ibrain_activated") if repair_backend == "ibrain" else None,
-            }
-            state["reviews"]["lanes"][key] = {name: value for name, value in preserved.items() if value is not None}
-        elif repair_backend == "consistency":
-            state["reviews"]["lanes"][key] = {
-                "consistency_attempts": lane.get("consistency_attempts", 0),
-            }
-        else:
-            state["reviews"]["lanes"].pop(key, None)
+        # Registration records bytes, not semantic withdrawal. Old receipts and
+        # their snapshots remain available; matching is checked when consumed.
+        if current:
+            state.setdefault('artifact_history', []).append({'artifact_key': key, 'artifact': current})
+        invalidated = []
         invalidated_reviews = []
-        for attempt_id, attempt in state["reviews"]["attempts"].items():
-            if attempt.get("artifact_key") == key or attempt.get("artifact_key") in invalidated:
-                invalidated_reviews.append(attempt_id)
-                attempt["eligible"] = False
-                attempt["invalidated_by"] = key
-                attempt["invalidated_at"] = utc_now()
-        if invalidated or invalidated_reviews:
-            state["invalidations"].append({
-                "at": utc_now(), "cause": key,
-                "artifacts": invalidated, "reviews": invalidated_reviews,
-            })
         state["artifacts"][key] = artifact
+        from .dispositions import apply_disposition
+        apply_disposition(state, key, disposition_path)
         state.setdefault("artifact_high_water", {})[key] = {
             "revision": artifact["revision"], "digest": artifact["digest"],
         }
@@ -536,16 +518,15 @@ def register_artifact(state_path, path, kind, milestone, expected_state_revision
                 and (not route_context.get("milestone_id")
                      or route_context.get("milestone_id") == artifact.get("milestone_id"))):
             state["route_back_context"] = None
-        state.pop("pending_signal", None)
         if kind == "roadmap" and artifact.get("target_milestones"):
             state["target_milestones"] = artifact["target_milestones"]
             state["milestones"] = {
-                item: {"status": "pending", "dependencies": artifact["milestone_dependencies"].get(item, [])}
+                item: state.get('milestones', {}).get(item, {"status": "pending", "dependencies": artifact["milestone_dependencies"].get(item, [])})
                 for item in artifact["target_milestones"]
             }
-            state["active_milestone"] = None
-        state["current_stage"] = STAGE_BY_KIND[kind]
-        if kind in {'spec', 'plan', 'code'}:
+        if STAGE_BY_KIND[kind] != state['current_stage']:
+            pass  # Supplementary registration never relocates execution.
+        elif kind in {'spec', 'plan', 'code'}:
             from .reviews import next_review_action
             state['pending_action'] = next_review_action(state, key)
         else:

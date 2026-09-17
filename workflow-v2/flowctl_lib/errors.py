@@ -7,6 +7,8 @@ class FlowctlError(Exception):
 
     def as_dict(self):
         result = {"ok": False, "code": self.code, "message": self.message}
-        if self.details:
-            result["details"] = self.details
+        result['details'] = {
+            'suggested_actions': ['Reload status before retrying; inspect current facts and the owning stage. Do not invent PASS, erase history or clear actual pauses.'],
+            **self.details,
+        }
         return result
