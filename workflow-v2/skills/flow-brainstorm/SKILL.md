@@ -19,6 +19,8 @@ Explore a feature idea with the human and return a bounded input for `$flow-requ
 
 Use the supplied issue and conversation context. Inspect authorized repository facts before asking the human to recall them. Establish the affected user and scenario, problem, desired outcome, constraints, success criteria, and meaningful uncertainty.
 
+Inherit the supplied discussion baseline from earlier human/Agent conversation. Distinguish explicit human commitments and rejected directions from provisional options and Agent suggestions; retain source references, applicable conditions and superseded statements. Do not re-ask settled questions without new evidence. If an available human-confirmed record still covers the current baseline, return it without another interview or confirmation. If no such confirmation is available, show a concise baseline for correction and ask only about material gaps, then confirm the record. Missing optional confirmer/time metadata alone does not require repeating a supported confirmation; do not invent it. A casual acknowledgment does not authorize scope, and a confirmed brainstorming record is not final development authorization.
+
 Ask one question at a time. Prefer a concise choice when genuine alternatives exist, while allowing the human to modify or reject every option. For a decision, present two or three viable directions with value, cost, risk, scope effect, and an agent recommendation with rationale. Separate human facts and choices from agent inference. Do not pressure the human into premature commitment: confirmation here approves the brainstorming summary as an accurate discussion record, not final product intent.
 
 When a direction introduces a generic platform, framework, registry, plugin system, shared abstraction, broad configurability, or extension mechanism, ask which current demand point requires it and what concrete present benefit it produces; future extensibility alone, architectural symmetry, or a hypothetical second consumer is not a reason to enlarge the requirement. Preserve such ideas as optional future considerations unless the human identifies a current need and benefit; always keep a smallest direct alternative visible.
@@ -41,7 +43,7 @@ recommendation and rationale; rejected ideas
 uncertainties; questions for autonomous analysis
 ```
 
-Keep `status: DRAFT` while correcting the summary. Require human confirmation that it is accurate, then set `status: CONFIRMED`, record confirmer and time, and return control to `$flow-requirement` with the confirmed result and its exact source references.
+Keep `status: DRAFT` while correcting the summary. Require human confirmation that it is accurate, or reuse the available explicit confirmation of the unchanged record, then set `status: CONFIRMED`, record available confirmation source/metadata, and return control to `$flow-requirement` with the confirmed result and its exact source references. Human changes are recorded as amendments, with the superseded source preserved.
 
 Present that confirmation as “这是讨论记录，请确认是否准确，或直接修改；确认后由两个 Agent 分析候选方案，这还不是最终开发授权。” Show the short problem/outcome/constraint summary and open choices, not the internal brainstorm_result fields. Do not combine it with final product authorization.
 

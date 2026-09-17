@@ -53,6 +53,62 @@ def _eligible(item):
                 or item.get('invalidated_by') not in {None, 'resume', item.get('artifact_key')})
 
 
+def current_review_binding(state, attempt):
+    """True/False/None: registered binding matches, differs, or is unknown."""
+    artifact = state.get('artifacts', {}).get(attempt.get('artifact_key'))
+    if not artifact or not attempt.get('artifact_digest'):
+        return None
+    if attempt.get('artifact_digest') != artifact['digest']:
+        return False
+    if artifact['type'] == 'code':
+        snapshot = state.get('snapshots', {}).get(attempt['artifact_key'], {}).get('snapshot_digest')
+        if not snapshot or not attempt.get('snapshot_digest'):
+            return None
+        return snapshot == attempt['snapshot_digest']
+    return True
+
+
+def active_review_attempt(state, attempt):
+    artifact = state.get('artifacts', {}).get(attempt.get('artifact_key'), {})
+    milestone = artifact.get('milestone_id')
+    if milestone and state.get('active_milestone') and milestone != state['active_milestone']:
+        return False
+    return (attempt.get('status') == 'STARTED' and _eligible(attempt)
+            and not attempt.get('recovery_disposition')
+            and attempt.get('stage') in {None, state.get('current_stage')}
+            and current_review_binding(state, attempt) is not False)
+
+
+def reconcile_review_occupancy(state):
+    """Release verified obsolete bindings, never infer execution termination."""
+    released = []
+    for attempt in state.get('reviews', {}).get('attempts', {}).values():
+        if attempt.get('status') != 'STARTED' or not _eligible(attempt) or attempt.get('recovery_disposition'):
+            continue
+        artifact = state.get('artifacts', {}).get(attempt.get('artifact_key'))
+        if not artifact:
+            continue  # Missing facts are unknown, not stale.
+        try:
+            actual = verify_artifact(artifact['path'], expected_type=artifact['type'], expected_issue=state['issue_id'])
+            if actual['digest'] != artifact['digest']:
+                continue
+            if (artifact['type'] == 'code' and attempt.get('artifact_digest') == artifact['digest']):
+                from .snapshot import verify_recorded_snapshot
+                verify_recorded_snapshot(state, attempt['artifact_key'])
+        except (FlowctlError, OSError):
+            continue
+        if current_review_binding(state, attempt) is not False:
+            continue
+        attempt['recovery_disposition'] = {
+            'reason': 'REGISTERED_BINDING_REPLACED', 'state_revision': state['state_revision'] + 1,
+            'current_digest': artifact['digest'],
+            'current_snapshot_digest': state.get('snapshots', {}).get(attempt['artifact_key'], {}).get('snapshot_digest'),
+            'execution_status': 'UNKNOWN',
+        }
+        released.append(attempt['attempt_id'])
+    return released
+
+
 def _completed_review_cycles(state, artifact_key, backend):
     artifact = state['artifacts'][artifact_key]
     snapshot = state.get('snapshots', {}).get(artifact_key, {}).get('snapshot_digest')
@@ -91,6 +147,7 @@ def review_receipt_facts(state, artifact_key, backend, digest):
                       'original_binding': {'digest': receipt.get('artifact_digest'), 'snapshot_digest': receipt.get('snapshot_digest')},
                       'original_pass_intact': receipt_readable(receipt),
                       'withdrawn': not _eligible(receipt),
+                      'occupancy_released': bool(receipt.get('recovery_disposition')),
                       'current_object_matches': bool(bound),
                       'applicability': {'applies': applicable(state, artifact_key, attempt_id, digest),
                                         'execution_assurance': 'CALLER_ATTESTED'}})
@@ -100,6 +157,8 @@ def review_receipt_facts(state, artifact_key, backend, digest):
 def has_passed_review(state, artifact_key, backend, digest):
     for fact in review_receipt_facts(state, artifact_key, backend, digest):
         if fact['withdrawn']:
+            continue
+        if fact['status'] == 'STARTED' and fact['occupancy_released']:
             continue
         if fact['current_object_matches'] and fact['status'] in {'FAILED', 'STARTED', 'INCOMPLETE'}:
             return False
@@ -129,6 +188,96 @@ def external_review_backends(state):
     return ('ibrain',) if state.get('reviews', {}).get('external_backend') == 'ibrain' else ('cursor', 'ibrain')
 
 
+def review_degradation(state, key, lane):
+    record = state.get('reviews', {}).get('degradation', {}).get(lane)
+    if not record:
+        return None
+    if record['basis'] == 'human':
+        return record
+    artifact = state['artifacts'][key]
+    if (record.get('artifact_key') == key and record.get('digest') == artifact['digest']
+            and record.get('snapshot_digest') == state.get('snapshots', {}).get(key, {}).get('snapshot_digest')):
+        return record
+    return None
+
+
+def degrade_review(state_path, lane, basis, reason, expected_state_revision):
+    """Record Agent-observed unavailability or a human route constraint, not PASS."""
+    if lane not in {'gpt', 'external'} or basis not in {'human', 'unavailable'} or not isinstance(reason, str) or not reason.strip():
+        raise FlowctlError('INVALID_REVIEW_DEGRADATION')
+    with locked_state(state_path, expected_state_revision) as state:
+        reject_if_paused(state)
+        if any(active_review_attempt(state, a) for a in state['reviews']['attempts'].values()):
+            raise FlowctlError('REVIEW_ATTEMPT_IN_PROGRESS')
+        key = next((key for key, a in state['artifacts'].items()
+                    if state['current_stage'] == 'flow-' + a['type']
+                    and (not state.get('active_milestone') or a.get('milestone_id') == state['active_milestone'])), None)
+        if key is None:
+            raise FlowctlError('REVIEW_ARTIFACT_REQUIRED')
+        record = dict(lane=lane, basis=basis, reason=reason.strip(), execution_assurance='CALLER_ATTESTED',
+                      artifact_key=key, digest=state['artifacts'][key]['digest'],
+                      snapshot_digest=state.get('snapshots', {}).get(key, {}).get('snapshot_digest'))
+        reviews = state['reviews']
+        previous = reviews.setdefault('degradation', {}).get(lane)
+        if previous:
+            reviews.setdefault('degradation_history', []).append(previous)
+        reviews['degradation'][lane] = record
+        state['pending_action'] = next_review_action(state, key)
+        return commit_state(state_path, state, 'REVIEW_DEGRADED', record)
+
+
+def unresolved_blocking_reviews(state, key):
+    """Known findings survive revisions and route changes; independent reports close them."""
+    from .dispositions import receipt_readable
+    attempts = state.get('reviews', {}).get('attempts', {})
+    passes = [a for a in attempts.values() if a.get('artifact_key') == key and receipt_readable(a)]
+    unresolved = []
+    for attempt_id, a in attempts.items():
+        if a.get('artifact_key') != key or not _requires_repair(a):
+            continue
+        rank = a.get('completed_state_revision', a.get('started_state_revision', 0))
+        closed = any(p.get('completed_state_revision', 0) > rank and
+                     (p.get('backend') == a.get('backend') or
+                      any(r['attempt_id'] == attempt_id for r in p.get('resolved_reviews', []))) for p in passes)
+        if not closed:
+            unresolved.append(attempt_id)
+    return unresolved
+
+
+def review_completion(state, key):
+    artifact = state['artifacts'][key]
+    digest = artifact['digest']
+    if any(a.get('artifact_key') == key and active_review_attempt(state, a)
+           for a in state['reviews']['attempts'].values()):
+        raise FlowctlError('REVIEW_ATTEMPT_IN_PROGRESS')
+    blockers = unresolved_blocking_reviews(state, key)
+    if blockers:
+        raise FlowctlError('UNRESOLVED_REVIEW_FINDINGS', attempt_ids=blockers)
+    gpt = has_passed_review(state, key, 'gpt', digest)
+    external = any(has_passed_review(state, key, b, digest) for b in external_review_backends(state))
+    # Historical consistency reports remain evidence, but are no longer mandatory.
+    independent = gpt or external or has_passed_review(state, key, 'consistency', digest)
+    if not independent:
+        raise FlowctlError('INDEPENDENT_REVIEW_REQUIRED')
+    missing = []
+    for lane, passed in (('gpt', gpt), ('external', external)):
+        if passed:
+            continue
+        record = review_degradation(state, key, lane)
+        runtime = [a for a in state['reviews']['attempts'].values()
+                   if a.get('artifact_key') == key and a.get('artifact_digest') == digest and _eligible(a)
+                   and a.get('classification') in RETRYABLE_PROCESS_CLASSIFICATIONS
+                   and a.get('backend') in (('gpt',) if lane == 'gpt' else external_review_backends(state))
+                   and (artifact['type'] != 'code' or a.get('snapshot_digest') ==
+                        state.get('snapshots', {}).get(key, {}).get('snapshot_digest'))]
+        if not record and not runtime:
+            raise FlowctlError('REVIEW_DEGRADATION_REQUIRED', lane=lane)
+        missing.append(dict(lane=lane, reason=record['reason'] if record else 'Observed reviewer runtime/protocol failure',
+                            basis=record['basis'] if record else 'unavailable',
+                            attempt_ids=[a['attempt_id'] for a in runtime]))
+    return missing
+
+
 def select_external_review(state_path, backend, reason, expected_state_revision):
     """Record a human-selected run route, never transport failure or approval."""
     if backend != 'ibrain' or not isinstance(reason, str) or not reason.strip():
@@ -137,7 +286,7 @@ def select_external_review(state_path, backend, reason, expected_state_revision)
         reviews = state.setdefault('reviews', {})
         if reviews.get('external_backend') == backend:
             return state
-        if any(a.get('status') == 'STARTED' and _eligible(a)
+        if any(active_review_attempt(state, a)
                for a in reviews.get('attempts', {}).values()):
             raise FlowctlError('REVIEW_ATTEMPT_IN_PROGRESS')
         reviews['external_backend'] = backend
@@ -179,10 +328,7 @@ def begin_review(state_path, backend, stage, artifact_key, model, effort, expect
         open_attempts = [
             item for item in state["reviews"]["attempts"].values()
             if item.get("artifact_key") == artifact_key and item.get("backend") == backend
-            and item.get('artifact_digest') == artifact['digest']
-            and (artifact['type'] != 'code' or item.get('snapshot_digest') ==
-                 state.get('snapshots', {}).get(artifact_key, {}).get('snapshot_digest'))
-            and item.get("status") == "STARTED" and _eligible(item)
+            and active_review_attempt(state, item)
         ]
         if open_attempts:
             raise FlowctlError(
@@ -190,7 +336,7 @@ def begin_review(state_path, backend, stage, artifact_key, model, effort, expect
                 attempt_ids=[item["attempt_id"] for item in open_attempts],
             )
         lanes = state.setdefault("reviews", {}).setdefault("lanes", {}).setdefault(artifact_key, {})
-        if backend in {"cursor", "ibrain", "consistency"}:
+        if backend in {"cursor", "ibrain", "consistency"} and not review_degradation(state, artifact_key, 'gpt'):
             if not has_passed_review(state, artifact_key, 'gpt', artifact['digest']):
                 raise FlowctlError("GPT_REVIEW_REQUIRED")
         if backend == "cursor":
@@ -203,7 +349,10 @@ def begin_review(state_path, backend, stage, artifact_key, model, effort, expect
             if model != "glm-5.3":
                 raise FlowctlError("IBRAIN_MODEL_REQUIRED")
             cursor_failures = _runtime_failure_count_for(state, artifact_key, "cursor", artifact["digest"])
-            if cursor_failures < 2 and not lanes.get("ibrain_activated") and state['reviews'].get('external_backend') != 'ibrain':
+            unavailable = review_degradation(state, artifact_key, 'external')
+            if (cursor_failures < 1 and not lanes.get("ibrain_activated")
+                    and state['reviews'].get('external_backend') != 'ibrain'
+                    and not (unavailable and unavailable['basis'] == 'unavailable')):
                 raise FlowctlError("CURSOR_RETRY_REQUIRED", attempts=cursor_failures)
             if _runtime_failure_count_for(state, artifact_key, "ibrain", artifact["digest"]) >= 2:
                 raise FlowctlError("IBRAIN_RETRY_EXHAUSTED")
@@ -211,17 +360,6 @@ def begin_review(state_path, backend, stage, artifact_key, model, effort, expect
         elif backend == "consistency":
             if model != "gpt-6-astra" or effort != "medium":
                 raise FlowctlError("CONSISTENCY_MODEL_REQUIRED")
-            external_pass = any(
-                has_passed_review(state, artifact_key, name, artifact['digest'])
-                for name in external_review_backends(state)
-            )
-            external_exhausted = (
-                (lanes.get('ibrain_activated') or
-                 _runtime_failure_count_for(state, artifact_key, "cursor", artifact["digest"]) >= 2)
-                and _runtime_failure_count_for(state, artifact_key, "ibrain", artifact["digest"]) >= 2
-            )
-            if not external_pass and not external_exhausted:
-                raise FlowctlError("EXTERNAL_REVIEW_REQUIRED")
             if _completed_review_cycles(state, artifact_key, backend) >= 3:
                 raise FlowctlError("CONSISTENCY_CYCLE_LIMIT")
         latest_lane = lanes.get(backend)
@@ -302,32 +440,41 @@ def next_review_action(state, artifact_key):
     lanes = state.get('reviews', {}).get('lanes', {}).get(artifact_key, {})
     attempts = state.get('reviews', {}).get('attempts', {})
     current = [a for a in attempts.values() if a.get('artifact_key') == artifact_key
-               and a.get('artifact_digest') == digest and _eligible(a)]
+               and current_review_binding(state, a) is not False and _eligible(a)]
     for attempt in current:
-        if attempt.get('status') == 'STARTED':
+        if active_review_attempt(state, attempt):
             return f"review:{attempt['backend']}:await-result"
     try:
-        reject_if_unclassified_exhausted(state, artifact_key, digest)
+        review_completion(state, artifact_key)
     except FlowctlError:
-        return 'repair:review:unclassified'
+        pass
+    else:
+        return ('handoff:' if artifact['approval']['valid'] else 'approve:') + kind
     for backend in ('gpt', 'cursor', 'ibrain', 'consistency'):
         lane = lanes.get(backend, {})
         if lane.get('digest') == digest and _requires_repair(attempts.get(lane.get('attempt_id'), {})):
             return 'revise:' + kind
     if kind == 'code' and artifact_key not in state.get('snapshots', {}):
         return 'snapshot:capture'
-    if not has_passed_review(state, artifact_key, 'gpt', digest):
+    if not has_passed_review(state, artifact_key, 'gpt', digest) and not review_degradation(state, artifact_key, 'gpt'):
         backend = 'gpt'
     elif not any(has_passed_review(state, artifact_key, name, digest) for name in external_review_backends(state)):
         if (state['reviews'].get('external_backend') == 'ibrain'
                 or _runtime_failure_count_for(state, artifact_key, 'cursor', digest) >= 2 or lanes.get('ibrain_activated')):
-            backend = 'ibrain' if _runtime_failure_count_for(state, artifact_key, 'ibrain', digest) < 2 else 'consistency'
+            backend = 'ibrain' if _runtime_failure_count_for(state, artifact_key, 'ibrain', digest) < 2 else 'gpt'
         else:
             backend = 'cursor'
     else:
-        backend = 'consistency'
-    if backend == 'consistency' and has_passed_review(state, artifact_key, backend, digest):
-        return ('handoff:' if artifact['approval']['valid'] else 'approve:') + kind
+        backend = 'gpt'
+    if unresolved_blocking_reviews(state, artifact_key):
+        # An available independent reviewer may take over known findings.
+        if not review_degradation(state, artifact_key, 'gpt'):
+            backend = 'gpt' if review_degradation(state, artifact_key, 'external') else lanes.get('repair_backend', backend)
+        return 'review:' + backend + ':resolve-findings'
+    try:
+        reject_if_unclassified_exhausted(state, artifact_key, digest, backend)
+    except FlowctlError:
+        return 'repair:review:unclassified'
     cycles = _completed_review_cycles(state, artifact_key, backend)
     if cycles >= 3:
         return 'repair:review:cycle-limit'
@@ -566,9 +713,15 @@ def _validate_terminal_report(report, digest):
     has_blocking = any(item['blocking_status'] == 'BLOCKING' for item in normalized)
     if (status == 'PASSED' and has_blocking) or (status == 'FAILED' and not has_blocking):
         raise FlowctlError('INCONSISTENT_REVIEW_STATUS')
-    # Metadata is generated here; auxiliary model prose is not persisted as a gate.
+    resolutions = report.get('resolved_reviews', [])
+    if (not isinstance(resolutions, list) or any(not isinstance(r, dict)
+            or not isinstance(r.get('attempt_id'), str) or not r['attempt_id']
+            or not isinstance(r.get('evidence'), str) or not r['evidence'].strip() for r in resolutions)):
+        raise FlowctlError('INVALID_REVIEW_RESOLUTION')
     report.clear()
     report.update(status=status, reviewed_digest=digest, findings=normalized)
+    if resolutions:
+        report['resolved_reviews'] = [dict(attempt_id=r['attempt_id'], evidence=r['evidence']) for r in resolutions]
 
 
 def _redacted_terminal_report(report, digest):
@@ -588,6 +741,9 @@ def _redacted_terminal_report(report, digest):
         return value
     redacted = {**report, 'findings': [{key: redact(value) for key, value in item.items()}
                                      for item in report['findings']]}
+    if report.get('resolved_reviews'):
+        redacted['resolved_reviews'] = [{key: redact(value) for key, value in item.items()}
+                                      for item in report['resolved_reviews']]
     _validate_terminal_report(redacted, digest)
     return redacted
 
@@ -851,6 +1007,10 @@ def submit_review(state_path, attempt_id, report_path, expected_state_revision, 
         except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
             raise FlowctlError("INVALID_REVIEW_REPORT") from exc
         _validate_terminal_report(report, attempt['artifact_digest'])
+        for resolution in report.get('resolved_reviews', []):
+            original = state['reviews']['attempts'].get(resolution['attempt_id'], {})
+            if original.get('artifact_key') != attempt['artifact_key'] or not _requires_repair(original):
+                raise FlowctlError('INVALID_REVIEW_RESOLUTION')
         if report_data is not None:
             Path(report_path).parent.mkdir(parents=True, exist_ok=True)
             Path(report_path).write_bytes(report_bytes)
@@ -869,6 +1029,7 @@ def submit_review(state_path, attempt_id, report_path, expected_state_revision, 
                 else "UNCLASSIFIED"
             ),
             "completed_state_revision": expected_state_revision + 1,
+            "resolved_reviews": report.get('resolved_reviews', []),
         })
         lanes = state.setdefault("reviews", {}).setdefault("lanes", {}).setdefault(attempt["artifact_key"], {})
         lanes[attempt["backend"]] = {
@@ -921,6 +1082,8 @@ def _sanitize(value):
 
 
 def _validate_open_attempt(state, attempt):
+    if attempt.get('recovery_disposition'):
+        raise FlowctlError('REVIEW_ATTEMPT_STALE')
     if attempt.get("status") != "STARTED" or not _eligible(attempt):
         raise FlowctlError("REVIEW_ATTEMPT_TERMINAL")
     if attempt.get("stage") != state["current_stage"]:

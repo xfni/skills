@@ -135,7 +135,7 @@ class WorkflowV2Tests(unittest.TestCase):
         text = self.skill("flow-requirement")
         for value in (
             "brainstorming", "human", "agent swarm", "conversation_context",
-            "issue_context", "two independent roles", "three and at most eight",
+            "issue_context", "two independent roles", "three and at most twelve",
             "two or three", "requirement.md", "READY_FOR_INTENT",
             "must not create intent.md", "$flow-intent",
         ):
@@ -278,56 +278,6 @@ class WorkflowV2Tests(unittest.TestCase):
         ):
             self.assertIn(value, text)
 
-    def test_spec_plan_code_use_independent_lanes_and_astra_consistency_review(self):
-        for name in ("flow-spec", "flow-plan", "flow-code"):
-            text = self.skill(name)
-            for value in (
-                "**REQUIRED SUB-SKILL:** Use independent-review",
-                "**REQUIRED SUB-SKILL:** Use cursor-review",
-                "**REQUIRED SUB-SKILL:** Use ibrain-review",
-                "gpt-5.6-sol", "high", "gpt-6-astra", "medium",
-                "root agent", "difficulty", "GPT Lane", "Cursor Lane",
-                "final consistency review", "complete filtered frozen worktree",
-                "organization-trusted", "no automatic commit", "secrets",
-                "BLOCKED_REVIEW", "glm-5.3",
-                "terminal receipt", "auxiliary fields", "controller",
-            ):
-                self.assertIn(value, text, f"{name} missing {value}")
-            self.assertNotIn("gpt-5.6-sol` with `medium", text)
-            self.assertNotIn("gpt-6-astra` with `high", text)
-
-    def test_cursor_runtime_failure_falls_back_to_ibrain_before_defect_handoff(self):
-        expected_status = {
-            "flow-spec": "APPROVED_WITH_DEFECT",
-            "flow-plan": "APPROVED_WITH_DEFECT",
-            "flow-code": "COMPLETE_WITH_DEFECT",
-        }
-        for name, status in expected_status.items():
-            text = self.skill(name)
-            for value in (
-                "bounded retry behavior",
-                "not degradable",
-                status,
-                "EXTERNAL_REVIEW_GAP",
-                "ibrain-review",
-                "glm-5.3",
-                "final completion report",
-                "handoff",
-                "full `review_binding` and binding ID",
-            ):
-                self.assertIn(value, text, f"{name} missing {value}")
-            self.assertNotIn("`INCOMPLETE`, drift", text)
-
-        self.assertIn("only when no gap is open", self.skill("flow-plan"))
-        self.assertIn("both Cursor and iBrain", self.skill("flow-code"))
-
-        integration = self.skill("flow-integration")
-        self.assertIn("COMPLETE_WITH_DEFECT", integration)
-        self.assertIn("EXTERNAL_REVIEW_GAP", integration)
-        self.assertIn("final report", integration)
-        self.assertIn('derive defect completion', integration)
-        self.assertIn('Propagate gaps', integration)
-
     def test_plan_contract(self):
         text = self.skill("flow-plan")
         for value in (
@@ -374,7 +324,7 @@ class WorkflowV2Tests(unittest.TestCase):
             self.assertIn("review-contract.md", text)
             self.assertIn("single-use package binding", text)
             self.assertIn("Legacy paths are", text)
-            self.assertIn("final consistency review", text)
+            # Review-route behavior is covered by test_review_lifecycle, not prose matching.
             self.assertNotIn("same active `external_review` authorization ID", text)
 
     def test_replay_decision_reaches_integration_as_controller_binding(self):
@@ -406,9 +356,9 @@ class WorkflowV2Tests(unittest.TestCase):
         contract = (ROOT / "review-contract.md").read_text()
         self.assertIn("independently of Cursor decisions", contract)
         self.assertIn("Every retry/revision/backend has a fresh single-use package binding", contract)
-        self.assertIn("Findings never activate fallback", contract)
+        # Finding preservation/takeover is exercised against the controller in test_review_lifecycle.
         orchestration = (ROOT / "orchestration-contract.md").read_text()
-        self.assertIn("two controller-recorded retryable Cursor process failures", orchestration)
+        # Runtime fallback is observable behavior, not a required failure quota.
         self.assertNotIn("If external review is denied", orchestration)
 
     def test_code_and_unit_test_contract(self):

@@ -70,6 +70,25 @@ class RuntimeGoalTests(unittest.TestCase):
         self.assertEqual(first['runtime_goal'], second['runtime_goal_history'][-1])
         self.assertEqual(first['pending_action'], second['pending_action'])
 
+    def test_observed_same_thread_replacement_preserves_history_and_flow_pause(self):
+        # Characterize recording only: these are fixture observations, not host activation.
+        for created_at in (self.goal['createdAt'], self.goal['createdAt'] + 1000):
+            with self.subTest(created_at=created_at):
+                prior = self.record({**self.goal, 'status': 'blocked'})
+                prior['pending_signal'] = {'signal': 'FLOW_RUN_HUMAN_GATE'}
+                controller.commit_state(self.path, prior, 'FIXTURE_HUMAN_GATE', {})
+                before = controller.load_state(self.path)
+                replacement = {**self.goal, 'createdAt': created_at,
+                               'objective': '按人类新任务完成 BCS-710 当前批准的接口验证'}
+                result = self.record(replacement)
+                self.assertEqual(replacement, result['runtime_goal'])
+                self.assertEqual(before['runtime_goal'], result['runtime_goal_history'][-1])
+                for field in ('current_stage', 'pending_action', 'pending_signal',
+                              'artifacts', 'reviews', 'authorizations'):
+                    self.assertEqual(before[field], result[field], field)
+                with self.assertRaisesRegex(FlowctlError, 'FLOW_PAUSED'):
+                    controller.reject_if_paused(result)
+
     def test_stale_state_revision_still_rejected(self):
         old_revision = controller.load_state(self.path)['state_revision']
         self.record()

@@ -106,7 +106,7 @@ class ReviewExclusionTests(unittest.TestCase):
             result = run_cursor_review(self.state_path, 'spec:M1', self.prompt, self.root / 'unused-runner.py',
                          'cursor', 'high', 5, bound['state_revision'], binding_id=bound['binding_id'])
         self.assertEqual('PASSED', result['status'], result.get('reason'))
-        self.assertEqual('review:consistency', load_state(self.state_path)['pending_action'])
+        self.assertEqual('handoff:spec', load_state(self.state_path)['pending_action'])
 
     def test_reason_changes_package_binding_even_with_identical_view(self):
         state = load_state(self.state_path)

@@ -66,9 +66,10 @@ class ExternalReviewSelectionTests(unittest.TestCase):
         state = self.select()
         with self.assertRaisesRegex(FlowctlError, 'EXTERNAL_BACKEND_SELECTED'):
             reviews.begin_review(self.path, 'cursor', 'flow-spec', 'spec:M1', 'cursor', 'high', state['state_revision'])
-        with self.assertRaisesRegex(FlowctlError, 'EXTERNAL_REVIEW_REQUIRED'):
-            reviews.begin_review(self.path, 'consistency', 'flow-spec', 'spec:M1',
-                                 'gpt-6-astra', 'medium', state['state_revision'])
+        # Legacy consistency is optional independent evidence, not an external-route gate.
+        attempt = reviews.begin_review(self.path, 'consistency', 'flow-spec', 'spec:M1',
+                                       'gpt-6-astra', 'medium', state['state_revision'])
+        self.assertEqual('consistency', attempt['backend'])
 
     def test_idempotent_selection_and_candidate_refresh_keep_route(self):
         first = self.select()
@@ -89,7 +90,7 @@ class ExternalReviewSelectionTests(unittest.TestCase):
                                              5, state['state_revision'])
         self.assertEqual('PASSED', result['status'])
         state = load_state(self.path)
-        self.assertEqual('review:consistency', state['pending_action'])
+        self.assertEqual('handoff:spec', state['pending_action'])
         attempt = reviews.begin_review(self.path, 'consistency', 'flow-spec', 'spec:M1',
                                        'gpt-6-astra', 'medium', state['state_revision'])
         self.assertEqual('consistency', attempt['backend'])
@@ -121,7 +122,7 @@ class ExternalReviewSelectionTests(unittest.TestCase):
             reviews.record_process_result(self.path, attempt['attempt_id'], None, '', '', True,
                                          attempt['state_revision'], self.root / f'failure-{index}.json')
             state = load_state(self.path)
-        self.assertEqual('review:consistency', state['pending_action'])
+        self.assertEqual('handoff:spec', state['pending_action'])
         self.assertFalse(any(a['backend'] == 'cursor' for a in state['reviews']['attempts'].values()))
         with self.assertRaisesRegex(FlowctlError, 'IBRAIN_RETRY_EXHAUSTED'):
             reviews.begin_review(self.path, 'ibrain', 'flow-spec', 'spec:M1',

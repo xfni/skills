@@ -6,7 +6,7 @@ from .artifacts import read_artifact as verify_artifact
 from .errors import FlowctlError
 from .state import commit_state, locked_state, reject_if_paused
 from .snapshot import verify_recorded_snapshot
-from .reviews import _unique_object, reject_if_unclassified_exhausted, has_passed_review, external_review_backends
+from .reviews import _unique_object, review_completion
 from .integration_results import (
     validate_integration_results_against_plan,
     validate_production_replay_gap,
@@ -130,70 +130,15 @@ def accept_handoff(state_path, handoff_path, expected_state_revision, dispositio
                 snapshot_digest = verify_recorded_snapshot(state, handoff["artifact_key"])["snapshot_digest"]
         completion_quality = "COMPLETE"
         if handoff["from_stage"] in REVIEWED_STAGES:
-            reject_if_unclassified_exhausted(state, handoff["artifact_key"], artifact["digest"])
-            lanes = state.get("reviews", {}).get("lanes", {}).get(handoff["artifact_key"], {})
-            if not has_passed_review(state, handoff['artifact_key'], 'gpt', artifact['digest']):
-                raise FlowctlError("GPT_REVIEW_REQUIRED")
-            for backend in ("cursor", "ibrain"):
-                external = lanes.get(backend, {})
-                attempt = state['reviews']['attempts'].get(external.get('attempt_id'), {})
-                superseded = (backend == 'cursor' and state['reviews'].get('external_backend') == 'ibrain'
-                    and external.get('status') == 'INCOMPLETE'
-                    and attempt.get('classification') == 'REVIEW_RESULT'
-                    and not any(f.get('blocking_status') == 'BLOCKING' for f in attempt.get('findings', []))
-                    and has_passed_review(state, handoff['artifact_key'], 'ibrain', artifact['digest']))
-                if superseded:
-                    continue  # Retain the old receipt; the selected lane provides current assurance.
-                if external.get("digest") == artifact["digest"] and external.get("status") in {"FAILED", "INCOMPLETE"}:
-                    code = "CURSOR_REVIEW_FAILED" if backend == "cursor" else "IBRAIN_REVIEW_FAILED"
-                    raise FlowctlError(code)
-            if not has_passed_review(state, handoff['artifact_key'], 'consistency', artifact['digest']):
-                raise FlowctlError("CONSISTENCY_REVIEW_REQUIRED")
-            open_external = [
-                attempt for attempt in state["reviews"]["attempts"].values()
-                if attempt.get("artifact_key") == handoff["artifact_key"]
-                and attempt.get('artifact_digest') == artifact['digest']
-                and (artifact['type'] != 'code' or attempt.get('snapshot_digest') ==
-                     state.get('snapshots', {}).get(handoff['artifact_key'], {}).get('snapshot_digest'))
-                and attempt.get("backend") in {"cursor", "ibrain", "consistency"}
-                and attempt.get("status") == "STARTED"
-                and attempt.get("eligible", True)
-            ]
-            if open_external:
-                raise FlowctlError("EXTERNAL_REVIEW_IN_PROGRESS")
-            external_pass = any(
-                has_passed_review(state, handoff['artifact_key'], name, artifact['digest'])
-                for name in external_review_backends(state)
-            )
-            if not external_pass:
-                cursor_failures = [
-                    item for item in state["reviews"]["attempts"].values()
-                    if item.get("artifact_key") == handoff["artifact_key"]
-                    and item.get("backend") == "cursor"
-                    and item.get("classification") in {"RUN_ERROR", "PROTOCOL_ERROR"}
-                    and item.get("artifact_digest") == artifact["digest"] and item.get("eligible", True)
-                    and not item.get('revoked')
-                    and (artifact['type'] != 'code' or item.get('snapshot_digest') == snapshot_digest)
-                ]
-                ibrain_failures = [
-                    item for item in state["reviews"]["attempts"].values()
-                    if item.get("artifact_key") == handoff["artifact_key"]
-                    and item.get("backend") == "ibrain"
-                    and item.get("classification") in {"RUN_ERROR", "PROTOCOL_ERROR"}
-                    and item.get("artifact_digest") == artifact["digest"] and item.get("eligible", True)
-                    and not item.get('revoked')
-                    and (artifact['type'] != 'code' or item.get('snapshot_digest') == snapshot_digest)
-                ]
-                fallback_active = state['reviews']['lanes'].get(handoff['artifact_key'], {}).get('ibrain_activated')
-                if (len(cursor_failures) < 2 and not fallback_active) or len(ibrain_failures) < 2:
-                    raise FlowctlError("EXTERNAL_REVIEW_REQUIRED")
+            missing = review_completion(state, handoff['artifact_key'])
+            for gap in missing:
                 completion_quality = "COMPLETE_WITH_DEFECT"
                 state.setdefault("open_gaps", []).append({
                     "type": "EXTERNAL_REVIEW_GAP", "artifact_key": handoff["artifact_key"],
-                    "attempt_ids": [item["attempt_id"] for item in cursor_failures + ibrain_failures],
+                    **gap,
                     'status': 'OPEN', 'owner': handoff['from_stage'],
-                    'missing_assurance': 'External independent review unavailable.',
-                    'remediation': 'Rerun external review when a backend becomes available.',
+                    'missing_assurance': gap['lane'] + ' independent review missing.',
+                    'remediation': 'Run the missing lane when available or when the human route constraint changes.',
                 })
         if handoff["from_stage"] == "flow-roadmap":
             ready = _ready_milestones(state)

@@ -33,4 +33,4 @@ Reviewer never writes the worktree, even a review-result document. Return only s
 
 Runner emits exactly one FLOW_REVIEW_REPORT_BEGIN / FLOW_REVIEW_REPORT_END frame. Identical repeated model frames normalize to one report without changing semantics. Conflicting signals are non-degradable. Structured failures use FLOW_REVIEW_ERROR_BEGIN / FLOW_REVIEW_ERROR_END; exit 0 is receipt, not approval.
 
-Do not resolve findings, edit, implement, commit, push or approve. The caller retains independent GPT, external-lane repair/recheck and fresh Astra final consistency rules.
+Do not approve, edit, implement, commit or push. Return independent findings and repair-verification evidence; the caller owns disposition. Flow prefers GPT + external review, permits at least one effective independent chain on real unavailability or human route constraints, and does not require a third Astra consistency review. An independent takeover may verify another unavailable reviewer's findings when supplied their report, fixes and evidence.

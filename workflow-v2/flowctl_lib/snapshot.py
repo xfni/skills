@@ -86,11 +86,14 @@ def record_snapshot(state_path, artifact_key, expected_state_revision, dispositi
         if existing:
             state.setdefault('snapshot_history', []).append({'artifact_key': artifact_key, 'snapshot': existing})
         state.setdefault("snapshots", {})[artifact_key] = snapshot
+        from .reviews import reconcile_review_occupancy
+        released_reviews = reconcile_review_occupancy(state)
         if state['current_stage'] == 'flow-code' and artifact['type'] == 'code':
             from .reviews import next_review_action
             state['pending_action'] = next_review_action(state, artifact_key)
         state = commit_state(state_path, state, "CODE_SNAPSHOT_RECORDED", {
             "artifact_key": artifact_key, "snapshot_digest": snapshot["snapshot_digest"],
+            "released_review_occupancy": released_reviews,
         })
         return {"snapshot": snapshot, "state_revision": state["state_revision"]}
 

@@ -205,6 +205,10 @@ def reconcile_resume(state_path, discovery, expected_state_revision, disposition
             if disposition_path is not None:
                 from .state import reject_if_paused
                 reject_if_paused(state)
+            from .reviews import reconcile_review_occupancy
+            released = reconcile_review_occupancy(state)
+            if released:
+                return commit_state(state_path, state, 'REVIEW_OCCUPANCY_RECONCILED', {'attempt_ids': released, 'pause_preserved': True})
             return state
         # Resume refreshes available facts. It does not choose a new stage or
         # reinterpret missing historical files as withdrawal of accepted work.
@@ -230,6 +234,8 @@ def reconcile_resume(state_path, discovery, expected_state_revision, disposition
                 'revision': artifact['revision'], 'digest': artifact['digest']}
         if reconcile_requirement_route(state, state['artifacts']) and state['current_stage'] == 'flow-requirement':
             state['pending_action'] = 'handoff:requirement'
+        from .reviews import reconcile_review_occupancy
+        released_reviews = reconcile_review_occupancy(state)
         _restore_current_code_gpt_lane(state)
         from .dispositions import apply_disposition
         apply_disposition(state, artifact_key(state['current_stage'].removeprefix('flow-'),
@@ -255,5 +261,6 @@ def reconcile_resume(state_path, discovery, expected_state_revision, disposition
         return commit_state(state_path, state, 'CHECKPOINT_RECONCILED', {
             'artifact_keys': sorted(discovery['valid_artifacts']),
             'position_preserved': True,
+            'released_review_occupancy': released_reviews,
             'invalid_candidates': discovery['invalid_candidates'],
         })

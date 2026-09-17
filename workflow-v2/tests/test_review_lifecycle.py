@@ -34,13 +34,13 @@ class ReviewLifecycleTests(unittest.TestCase):
     def state(self):
         return load_state(self.state_path)
 
-    def review(self, backend, status='PASSED', findings=None, kind='spec'):
+    def review(self, backend, status='PASSED', findings=None, kind='spec', resolved_reviews=None):
         state = self.state()
         attempt = begin_review(self.state_path, backend, 'flow-' + kind, kind + ':M1',
             'glm-5.3' if backend == 'ibrain' else 'gpt-6-astra', 'medium', state['state_revision'])
         self.index += 1
         report = self.state_path.parent / f'report-{self.index}.json'
-        report.write_text(json.dumps(dict(status=status, findings=findings or [], reviewed_digest=attempt['artifact_digest'])))
+        report.write_text(json.dumps(dict(status=status, findings=findings or [], reviewed_digest=attempt['artifact_digest'], resolved_reviews=resolved_reviews or [])))
         return submit_review(self.state_path, attempt['attempt_id'], report, attempt['state_revision'],
                              controller_executed=backend in {'cursor', 'ibrain'})
 
@@ -147,7 +147,7 @@ class ReviewLifecycleTests(unittest.TestCase):
         state = self.state()
         state['reviews']['lanes']['spec:M1']['consistency_attempts'] = 3
         commit_state(self.state_path, state, 'TEST_LEGACY_CONSISTENCY_COUNT', {})
-        self.assertEqual('review:consistency', self.resume()['pending_action'])
+        self.assertEqual('handoff:spec', self.resume()['pending_action'])
         self.review('consistency')
         self.assertEqual('handoff:spec', self.state()['pending_action'])
 
@@ -199,14 +199,182 @@ class ReviewLifecycleTests(unittest.TestCase):
         self.review('gpt')
         self.failure('cursor'); self.failure('cursor')
         self.review('ibrain')
-        self.assertEqual('review:consistency', self.resume()['pending_action'])
+        self.assertEqual('handoff:spec', self.resume()['pending_action'])
         self.review('consistency')
         self.assertEqual('handoff:spec', self.resume()['pending_action'])
         self.handoff()
 
     def test_resume_after_cursor_pass_requires_consistency(self):
         self.review('gpt'); self.review('cursor')
-        self.assertEqual('review:consistency', self.resume()['pending_action'])
+        self.assertEqual('handoff:spec', self.resume()['pending_action'])
+        self.assertEqual('COMPLETE', self.handoff()['completion_quality'])
+
+    def test_human_gpt_only_needs_no_external_failures(self):
+        from flowctl_lib.reviews import degrade_review
+        self.review('gpt')
+        degrade_review(self.state_path, 'external', 'human', 'Human requests GPT only',
+                       self.state()['state_revision'])
+        self.assertEqual('handoff:spec', self.resume()['pending_action'])
+        self.assertEqual('COMPLETE_WITH_DEFECT', self.handoff()['completion_quality'])
+        self.assertEqual(1, len(self.state()['reviews']['attempts']))
+
+    def test_unavailability_allows_external_only_but_not_zero_reviews(self):
+        from flowctl_lib.reviews import degrade_review, select_external_review
+        degrade_review(self.state_path, 'gpt', 'unavailable', 'Both GPT models unavailable',
+                       self.state()['state_revision'])
+        with self.assertRaisesRegex(FlowctlError, 'INDEPENDENT_REVIEW_REQUIRED'):
+            self.handoff()
+        select_external_review(self.state_path, 'ibrain', 'Use available iBrain', self.state()['state_revision'])
+        self.review('ibrain')
+        self.assertEqual('COMPLETE_WITH_DEFECT', self.handoff()['completion_quality'])
+
+    def test_degrade_does_not_erase_other_lane_blocker(self):
+        from flowctl_lib.reviews import degrade_review
+        self.review('gpt')
+        self.review('cursor', 'FAILED', [dict(summary='Permission bypass', blocking_status='BLOCKING')])
+        degrade_review(self.state_path, 'external', 'human', 'GPT only', self.state()['state_revision'])
+        with self.assertRaisesRegex(FlowctlError, 'UNRESOLVED_REVIEW_FINDINGS'):
+            self.handoff()
+
+    def test_observed_cursor_unavailability_can_use_ibrain_without_fake_attempt(self):
+        from flowctl_lib.reviews import degrade_review
+        self.review('gpt')
+        degrade_review(self.state_path, 'external', 'unavailable', 'Cursor SDK unavailable; iBrain is available',
+                       self.state()['state_revision'])
+        self.review('ibrain')
+        self.assertEqual('COMPLETE', self.handoff()['completion_quality'])
+        self.assertFalse(any(a['backend'] == 'cursor' for a in self.state()['reviews']['attempts'].values()))
+
+    def test_registration_releases_old_started_without_changing_its_result(self):
+        from flowctl_lib.reviews import degrade_review
+        attempt = begin_review(self.state_path, 'gpt', 'flow-spec', 'spec:M1',
+                               'gpt-6-astra', 'medium', self.state()['state_revision'])
+        path, _ = fixtures.write_artifact(self.state_path.parent, 'spec', milestone='M1', revision=2)
+        register_artifact(self.state_path, path, 'spec', 'M1', self.state()['state_revision'])
+        old = self.state()['reviews']['attempts'][attempt['attempt_id']]
+        self.assertEqual('STARTED', old['status'])
+        self.assertIsNone(old['classification'])
+        self.assertIn('recovery_disposition', old)
+        self.assertEqual(attempt['artifact_digest'], old['artifact_digest'])
+        self.review('gpt')
+        degrade_review(self.state_path, 'external', 'human', 'GPT only', self.state()['state_revision'])
+        self.assertEqual('COMPLETE_WITH_DEFECT', self.handoff()['completion_quality'])
+
+    def test_resume_repairs_legacy_started_and_is_idempotent(self):
+        attempt = begin_review(self.state_path, 'gpt', 'flow-spec', 'spec:M1',
+                               'gpt-6-astra', 'medium', self.state()['state_revision'])
+        path, _ = fixtures.write_artifact(self.state_path.parent, 'spec', milestone='M1', revision=2)
+        register_artifact(self.state_path, path, 'spec', 'M1', self.state()['state_revision'])
+        state = self.state()
+        state['reviews']['attempts'][attempt['attempt_id']].pop('recovery_disposition', None)
+        commit_state(self.state_path, state, 'TEST_LEGACY_STARTED', {})
+        recovered = self.resume()
+        self.assertIn('recovery_disposition', recovered['reviews']['attempts'][attempt['attempt_id']])
+        self.assertEqual(recovered['state_revision'], self.resume()['state_revision'])
+
+    def test_current_started_still_blocks_and_approval_change_does_not_archive_it(self):
+        from flowctl_lib.reviews import degrade_review
+        attempt = begin_review(self.state_path, 'gpt', 'flow-spec', 'spec:M1',
+                               'gpt-6-astra', 'medium', self.state()['state_revision'])
+        path = Path(self.state()['artifacts']['spec:M1']['path'])
+        body, approval = path.read_text().split('--- FLOW APPROVAL BEGIN ---', 1)
+        path.write_text(body + '--- FLOW APPROVAL BEGIN ---' + approval.replace('status: APPROVED', 'status: DRAFT'))
+        registered = register_artifact(self.state_path, path, 'spec', 'M1', self.state()['state_revision'])
+        self.assertEqual(attempt['artifact_digest'], registered['artifacts']['spec:M1']['digest'])
+        self.assertEqual('DRAFT', registered['artifacts']['spec:M1']['approval']['status'])
+        self.resume()
+        self.assertNotIn('recovery_disposition', self.state()['reviews']['attempts'][attempt['attempt_id']])
+        with self.assertRaisesRegex(FlowctlError, 'REVIEW_ATTEMPT_IN_PROGRESS'):
+            degrade_review(self.state_path, 'external', 'human', 'GPT only', self.state()['state_revision'])
+
+    def test_paused_resume_releases_legacy_occupancy_without_releasing_pause(self):
+        attempt = begin_review(self.state_path, 'gpt', 'flow-spec', 'spec:M1',
+                               'gpt-6-astra', 'medium', self.state()['state_revision'])
+        path, _ = fixtures.write_artifact(self.state_path.parent, 'spec', milestone='M1', revision=2)
+        register_artifact(self.state_path, path, 'spec', 'M1', self.state()['state_revision'])
+        state = self.state()
+        state['reviews']['attempts'][attempt['attempt_id']].pop('recovery_disposition', None)
+        pause = dict(signal='FLOW_RUN_BLOCKED', cause='Actual host refusal', stage='flow-spec')
+        state['pending_signal'] = pause
+        state['pending_action'] = 'blocked:host'
+        commit_state(self.state_path, state, 'TEST_LEGACY_PAUSED', {})
+        recovered = self.resume()
+        self.assertEqual(pause, recovered['pending_signal'])
+        self.assertEqual('blocked:host', recovered['pending_action'])
+        self.assertEqual('flow-spec', recovered['current_stage'])
+        self.assertIn('recovery_disposition', recovered['reviews']['attempts'][attempt['attempt_id']])
+        self.assertEqual(recovered['state_revision'], self.resume()['state_revision'])
+
+    def test_replaced_started_cannot_submit_when_digest_returns_to_old_value(self):
+        original = self.state()['artifacts']['spec:M1']['path']
+        attempt = begin_review(self.state_path, 'gpt', 'flow-spec', 'spec:M1',
+                               'gpt-6-astra', 'medium', self.state()['state_revision'])
+        path, _ = fixtures.write_artifact(self.state_path.parent, 'spec', milestone='M1', revision=2, name='replacement.md')
+        register_artifact(self.state_path, path, 'spec', 'M1', self.state()['state_revision'])
+        register_artifact(self.state_path, original, 'spec', 'M1', self.state()['state_revision'])
+        self.assertEqual(attempt['artifact_digest'], self.state()['artifacts']['spec:M1']['digest'])
+        report = self.state_path.parent / 'late.json'
+        report.write_text(json.dumps(dict(status='PASSED', findings=[], reviewed_digest=attempt['artifact_digest'])))
+        with self.assertRaisesRegex(FlowctlError, 'REVIEW_ATTEMPT_STALE'):
+            submit_review(self.state_path, attempt['attempt_id'], report, self.state()['state_revision'])
+        self.assertEqual('review:gpt', self.resume()['pending_action'])
+
+    def test_unknown_started_binding_cannot_launch_overlapping_review(self):
+        attempt = begin_review(self.state_path, 'gpt', 'flow-spec', 'spec:M1',
+                               'gpt-6-astra', 'medium', self.state()['state_revision'])
+        state = self.state()
+        state['reviews']['attempts'][attempt['attempt_id']].pop('artifact_digest')
+        commit_state(self.state_path, state, 'TEST_LEGACY_UNKNOWN_BINDING', {})
+        with self.assertRaisesRegex(FlowctlError, 'REVIEW_ATTEMPT_IN_PROGRESS'):
+            begin_review(self.state_path, 'gpt', 'flow-spec', 'spec:M1',
+                         'gpt-6-astra', 'medium', self.state()['state_revision'])
+
+    def test_other_milestone_started_does_not_occupy_current_route(self):
+        from flowctl_lib.reviews import degrade_review
+        attempt = begin_review(self.state_path, 'gpt', 'flow-spec', 'spec:M1',
+                               'gpt-6-astra', 'medium', self.state()['state_revision'])
+        state = self.state()
+        state['active_milestone'] = 'M2'
+        commit_state(self.state_path, state, 'TEST_CURRENT_M2', {})
+        path, _ = fixtures.write_artifact(self.state_path.parent, 'spec', milestone='M2', name='spec_m2.md')
+        register_artifact(self.state_path, path, 'spec', 'M2', self.state()['state_revision'])
+        degraded = degrade_review(self.state_path, 'external', 'human', 'GPT only', self.state()['state_revision'])
+        self.assertEqual('STARTED', degraded['reviews']['attempts'][attempt['attempt_id']]['status'])
+        self.assertNotIn('recovery_disposition', degraded['reviews']['attempts'][attempt['attempt_id']])
+
+    def test_missing_attempt_snapshot_cannot_launch_overlapping_code_review(self):
+        state = self.state()
+        state['current_stage'] = 'flow-code'
+        commit_state(self.state_path, state, 'TEST_CODE', {})
+        path, _ = fixtures.write_artifact(self.state_path.parent, 'code', milestone='M1', approval_status='DRAFT')
+        register_artifact(self.state_path, path, 'code', 'M1', self.state()['state_revision'])
+        record_snapshot(self.state_path, 'code:M1', self.state()['state_revision'])
+        attempt = begin_review(self.state_path, 'gpt', 'flow-code', 'code:M1',
+                               'gpt-6-astra', 'medium', self.state()['state_revision'])
+        state = self.state()
+        state['reviews']['attempts'][attempt['attempt_id']].pop('snapshot_digest')
+        commit_state(self.state_path, state, 'TEST_UNKNOWN_CODE_SNAPSHOT', {})
+        with self.assertRaisesRegex(FlowctlError, 'REVIEW_ATTEMPT_IN_PROGRESS'):
+            begin_review(self.state_path, 'gpt', 'flow-code', 'code:M1',
+                         'gpt-6-astra', 'medium', self.state()['state_revision'])
+
+    def test_new_version_retains_known_blocker_until_explicit_handoff_review(self):
+        from flowctl_lib.reviews import degrade_review
+        self.review('gpt')
+        failed = self.review('cursor', 'FAILED', [dict(summary='Permission bypass', blocking_status='BLOCKING')])
+        path, _ = fixtures.write_artifact(self.state_path.parent, 'spec', milestone='M1', revision=2)
+        register_artifact(self.state_path, path, 'spec', 'M1', self.state()['state_revision'])
+        degrade_review(self.state_path, 'external', 'human', 'GPT only', self.state()['state_revision'])
+        self.review('gpt')
+        with self.assertRaisesRegex(FlowctlError, 'UNRESOLVED_REVIEW_FINDINGS'):
+            self.handoff()
+        attempt = begin_review(self.state_path, 'gpt', 'flow-spec', 'spec:M1',
+                               'gpt-6-astra', 'medium', self.state()['state_revision'])
+        report = self.state_path.parent / 'handoff-review.json'
+        report.write_text(json.dumps(dict(status='PASSED', findings=[], reviewed_digest=attempt['artifact_digest'],
+            resolved_reviews=[dict(attempt_id=failed['attempt_id'], evidence='Reproduced original bypass; verified fix and negative test')])) )
+        submit_review(self.state_path, attempt['attempt_id'], report, attempt['state_revision'])
+        self.assertEqual('COMPLETE_WITH_DEFECT', self.handoff()['completion_quality'])
 
     def test_arbitrary_entry_full_pass_resumes_handoff(self):
         for backend in ('gpt', 'cursor', 'consistency'):
@@ -219,9 +387,9 @@ class ReviewLifecycleTests(unittest.TestCase):
         self.review('cursor', 'FAILED', [dict(summary='Fix rule', blocking_status='BLOCKING')])
         path, _ = fixtures.write_artifact(self.state_path.parent, 'spec', milestone='M1', revision=2)
         state = fixtures.register_clarification(self.state_path, path, 'spec', 'M1', self.state()['state_revision'])
-        self.assertEqual('review:cursor', state['pending_action'])
+        self.assertEqual('review:cursor:resolve-findings', state['pending_action'])
         state = self.resume()
-        self.assertEqual('review:cursor', state['pending_action'])
+        self.assertEqual('review:cursor:resolve-findings', state['pending_action'])
         self.assertTrue(has_passed_review(state, 'spec:M1', 'gpt', state['artifacts']['spec:M1']['digest']))
         self.review('cursor'); self.review('consistency')
         self.assertEqual('handoff:spec', self.resume()['pending_action'])
@@ -238,7 +406,7 @@ class ReviewLifecycleTests(unittest.TestCase):
         self.review('cursor', 'INCOMPLETE', [dict(summary='Need remaining observation', blocking_status='NON_BLOCKING')])
         self.assertEqual('review:cursor:retry', self.state()['pending_action'])
         self.review('cursor')
-        self.assertEqual('review:consistency', self.state()['pending_action'])
+        self.assertEqual('handoff:spec', self.state()['pending_action'])
 
     def test_package_exception_finishes_attempt_without_pass_or_fallback(self):
         self.review('gpt')
@@ -278,7 +446,7 @@ class ReviewLifecycleTests(unittest.TestCase):
         self.review('ibrain', 'FAILED', [dict(summary='Fix behavior', blocking_status='BLOCKING')])
         path, _ = fixtures.write_artifact(self.state_path.parent, 'spec', milestone='M1', revision=2)
         fixtures.register_clarification(self.state_path, path, 'spec', 'M1', self.state()['state_revision'])
-        self.assertEqual('review:ibrain', self.resume()['pending_action'])
+        self.assertEqual('review:ibrain:resolve-findings', self.resume()['pending_action'])
         self.review('ibrain'); self.review('consistency'); self.handoff()
 
     def test_consistency_failure_reopens_required_lanes(self):
@@ -286,20 +454,49 @@ class ReviewLifecycleTests(unittest.TestCase):
         self.review('consistency', 'FAILED', [dict(summary='Cross-lane conflict', blocking_status='BLOCKING')])
         path, _ = fixtures.write_artifact(self.state_path.parent, 'spec', milestone='M1', revision=2)
         register_artifact(self.state_path, path, 'spec', 'M1', self.state()['state_revision'])
-        self.assertEqual('review:gpt', self.resume()['pending_action'])
+        self.assertEqual('review:consistency:resolve-findings', self.resume()['pending_action'])
         for backend in ('gpt', 'cursor', 'consistency'):
             self.review(backend)
         self.handoff()
 
     def test_ibrain_repair_runtime_exhaustion_allows_consistency(self):
         self.review('gpt'); self.failure('cursor'); self.failure('cursor')
-        self.review('ibrain', 'FAILED', [dict(summary='Fix behavior', blocking_status='BLOCKING')])
+        failed = self.review('ibrain', 'FAILED', [dict(summary='Fix behavior', blocking_status='BLOCKING')])
         path, _ = fixtures.write_artifact(self.state_path.parent, 'spec', milestone='M1', revision=2)
         fixtures.register_clarification(self.state_path, path, 'spec', 'M1', self.state()['state_revision'])
         self.failure('ibrain'); self.failure('ibrain')
-        self.assertEqual('review:consistency', self.state()['pending_action'])
-        self.review('consistency')
+        with self.assertRaisesRegex(FlowctlError, 'UNRESOLVED_REVIEW_FINDINGS'):
+            self.handoff()
+        self.review('consistency', resolved_reviews=[dict(attempt_id=failed['attempt_id'], evidence='Original finding and repaired rule verified')])
         self.handoff()
+
+    def test_external_runtime_exhaustion_uses_distinct_astra_receipts_and_preserves_gap(self):
+        # Existing controlled path, not proof of real vendor/subagent availability.
+        with self.assertRaisesRegex(FlowctlError, 'GPT_REVIEW_REQUIRED'):
+            self.review('consistency')
+        self.review('gpt')  # Helper supplies an Astra/medium primary report.
+        primary_id = self.state()['reviews']['lanes']['spec:M1']['gpt']['attempt_id']
+        for backend in ('cursor', 'ibrain'):
+            self.failure(backend)
+            self.failure(backend)
+        self.assertEqual('handoff:spec', self.resume()['pending_action'])
+        self.review('consistency')
+        state = self.state()
+        consistency_id = state['reviews']['lanes']['spec:M1']['consistency']['attempt_id']
+        self.assertNotEqual(primary_id, consistency_id)
+        for attempt_id in (primary_id, consistency_id):
+            self.assertEqual('gpt-6-astra', state['reviews']['attempts'][attempt_id]['model'])
+            self.assertEqual('medium', state['reviews']['attempts'][attempt_id]['effort'])
+        handoff = self.handoff()
+        self.assertEqual('COMPLETE_WITH_DEFECT', handoff['completion_quality'])
+        self.assertEqual('有条件通过', handoff['stage_summary']['result'])
+        state = self.state()
+        self.assertEqual('flow-plan', state['current_stage'])
+        gap = next(g for g in state['open_gaps'] if g['type'] == 'EXTERNAL_REVIEW_GAP')
+        self.assertEqual('OPEN', gap['status'])
+        self.assertEqual(4, len(gap['attempt_ids']))
+        self.assertFalse(any(a.get('status') == 'PASSED' for a in state['reviews']['attempts'].values()
+                             if a['backend'] in ('cursor', 'ibrain')))
 
     def test_exception_between_begin_and_bind_closes_attempt(self):
         self.review('gpt')
@@ -327,7 +524,7 @@ class ReviewLifecycleTests(unittest.TestCase):
         Path(passed['report_path']).unlink()
         self.assertEqual('review:cursor', self.resume()['pending_action'])
         self.review('cursor')
-        self.assertEqual('review:consistency', self.state()['pending_action'])
+        self.assertEqual('handoff:spec', self.state()['pending_action'])
 
     def test_old_stage_approval_refresh_preserves_current_action(self):
         for backend in ('gpt', 'cursor', 'consistency'):

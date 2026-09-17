@@ -9,7 +9,7 @@ Own one bounded read-only review through the company iBrain Responses API. The c
 
 ## Trust, scope and credentials
 
-All iBrain models are organization-approved private deployments or confidentiality-bound trusted vendors. No human external-review authorization is required, and Cursor authorization never gates iBrain. Host sandbox/network permissions and sensitive-data exclusions still apply. Inside Flow, use the recorded external route: an explicit human iBrain selection needs no Cursor attempt; default Cursor backup requires two controller-recorded retryable Cursor failures on the current artifact digest. Findings never activate fallback.
+All iBrain models are organization-approved private deployments or confidentiality-bound trusted vendors. No human external-review authorization is required, and Cursor authorization never gates iBrain. Host sandbox/network permissions and sensitive-data exclusions still apply. Inside Flow, use the recorded route: explicit iBrain selection needs no Cursor attempt; observed Cursor runtime/protocol failure permits iBrain backup without a failure quota. Known findings are retained and require independent verification, not automatic disappearance on channel change.
 
 ### Host permission application
 
@@ -43,6 +43,6 @@ Reviewer returns stdout/API only, never writes worktree or report documents. Con
 
 Runner owns one FLOW_REVIEW_REPORT_BEGIN / FLOW_REVIEW_REPORT_END frame. Identical repeated framed JSON normalizes to one report; conflicting terminal signals remain non-degradable. Structured failures use FLOW_REVIEW_ERROR_BEGIN / FLOW_REVIEW_ERROR_END and exit 2. Exit 0 is report receipt, not approval.
 
-Flow retries retryable RUN_ERROR/PROTOCOL_ERROR once; iBrain owns and rechecks its substantive findings. A fresh gpt-6-astra/medium final consistency review is still required. Historical duplicate-frame failures may only be invalidated by audited repair, preserving evidence and requiring a fresh review; never manufacture PASS.
+Flow retries RUN_ERROR/PROTOCOL_ERROR at most once when useful. Standard assurance is GPT + one external chain; real unavailability or human route restrictions permit at least one effective independent chain with a recorded gap. No third Astra consistency review is required. Normally recheck your own findings; an independent takeover receives original findings, fixes and evidence and explicitly verifies them. Historical duplicate-frame repair preserves evidence and never manufactures PASS.
 
 Do not resolve findings, approve, edit, implement, commit or push.

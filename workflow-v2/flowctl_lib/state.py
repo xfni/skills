@@ -508,6 +508,8 @@ def register_artifact(state_path, path, kind, milestone, expected_state_revision
         invalidated = []
         invalidated_reviews = []
         state["artifacts"][key] = artifact
+        from .reviews import reconcile_review_occupancy
+        released_reviews = reconcile_review_occupancy(state)
         from .dispositions import apply_disposition
         apply_disposition(state, key, disposition_path)
         state.setdefault("artifact_high_water", {})[key] = {
@@ -534,6 +536,7 @@ def register_artifact(state_path, path, kind, milestone, expected_state_revision
         return commit_state(state_path, state, "ARTIFACT_REGISTERED", {
             "artifact_key": key, "revision": artifact["revision"], "digest": artifact["digest"],
             "invalidated_artifacts": invalidated, "invalidated_reviews": invalidated_reviews,
+            "released_review_occupancy": released_reviews,
         })
 
 

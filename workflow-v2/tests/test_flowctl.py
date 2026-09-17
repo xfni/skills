@@ -1489,7 +1489,7 @@ class ReviewAndHandoffTests(unittest.TestCase):
                 result = run_cursor_review(state_path, 'spec:M1', prompt, root / 'unused.py', 'fake', 'high', 5, done['state_revision'])
             self.assertEqual('PROTOCOL_ERROR', result['classification'])
             self.assertEqual('INVALID_TERMINAL_REVIEW_REPORT', result['failure_reason'])
-            self.assertEqual('review:cursor:retry', load_state(state_path)['pending_action'])
+            self.assertEqual('handoff:spec', load_state(state_path)['pending_action'])
 
     def test_two_protocol_errors_activate_ibrain_fallback(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1508,7 +1508,7 @@ class ReviewAndHandoffTests(unittest.TestCase):
                         state_path, 'spec:M1', prompt, root / 'unused.py',
                         'fake', 'high', 5, current['state_revision'],
                     )
-            self.assertEqual('review:ibrain', load_state(state_path)['pending_action'])
+            self.assertEqual('handoff:spec', load_state(state_path)['pending_action'])
             fallback = begin_review(
                 state_path, 'ibrain', 'flow-spec', 'spec:M1', 'glm-5.3', 'medium',
                 current['state_revision'],
@@ -1654,7 +1654,7 @@ class ReviewAndHandoffTests(unittest.TestCase):
             cursor = run_cursor_review(state_path, "spec:M1", prompt, runner, "fake", "high", 5, gpt_result["state_revision"])
             self.assertEqual("FAILED", cursor["status"])
             self.assertEqual("REVIEW_RESULT", cursor["classification"])
-            with self.assertRaisesRegex(FlowctlError, "CURSOR_REVIEW_FAILED"):
+            with self.assertRaisesRegex(FlowctlError, "UNRESOLVED_REVIEW_FINDINGS"):
                 handoff = root / "failed-handoff.json"
                 handoff.write_text(json.dumps({
                     "schema_version": 1, "signal": "FLOW_RUN_HANDOFF", "issue_id": "BCS-710",
@@ -1752,7 +1752,7 @@ class ReviewAndHandoffTests(unittest.TestCase):
                 "run_id": "run-bcs-710", "from_stage": "flow-spec",
                 "next_stage": "flow-plan", "artifact_key": "spec:M1",
             }))
-            with self.assertRaisesRegex(FlowctlError, "UNCLASSIFIED_RETRY_EXHAUSTED"):
+            with self.assertRaisesRegex(FlowctlError, "REVIEW_DEGRADATION_REQUIRED"):
                 accept_handoff(state_path, handoff, revision)
 
     def test_unknown_gpt_requires_real_gpt_pass_not_other_role_budget_reset(self):
@@ -1787,7 +1787,7 @@ class ReviewAndHandoffTests(unittest.TestCase):
                 "run_id": "run-bcs-710", "from_stage": "flow-spec",
                 "next_stage": "flow-plan", "artifact_key": "spec:M1",
             }))
-            with self.assertRaisesRegex(FlowctlError, "UNCLASSIFIED_RETRY_EXHAUSTED"):
+            with self.assertRaisesRegex(FlowctlError, "INDEPENDENT_REVIEW_REQUIRED"):
                 accept_handoff(state_path, handoff, result["state_revision"])
 
     def test_framed_terminal_report_allows_logs_after_the_frame(self):
@@ -2144,7 +2144,7 @@ class ReviewAndHandoffTests(unittest.TestCase):
                 "run_id": "run-bcs-710",
                 "from_stage": "flow-spec", "next_stage": "flow-plan", "artifact_key": "spec:M1",
             }))
-            with self.assertRaisesRegex(FlowctlError, "GPT_REVIEW_REQUIRED"):
+            with self.assertRaisesRegex(FlowctlError, "INDEPENDENT_REVIEW_REQUIRED"):
                 accept_handoff(state_path, handoff, state["state_revision"])
 
     def test_handoff_runtime_parser_rejects_duplicate_and_schema_invalid_fields(self):
@@ -2235,7 +2235,7 @@ class ReviewAndHandoffTests(unittest.TestCase):
                 state_path, fallback["attempt_id"], fallback_report,
                 fallback["state_revision"], controller_executed=True,
             )
-            self.assertEqual("review:consistency", load_state(state_path)["pending_action"])
+            self.assertEqual("handoff:spec", load_state(state_path)["pending_action"])
             final = begin_review(
                 state_path, "consistency", "flow-spec", "spec:M1",
                 "gpt-6-astra", "medium", result["state_revision"],
@@ -2295,7 +2295,7 @@ class ReviewAndHandoffTests(unittest.TestCase):
             cursor_passed = submit_review(
                 state_path, cursor_retry["attempt_id"], report, cursor_retry["state_revision"], controller_executed=True,
             )
-            self.assertEqual("review:consistency", load_state(state_path)["pending_action"])
+            self.assertEqual("handoff:spec", load_state(state_path)["pending_action"])
 
             with self.assertRaisesRegex(FlowctlError, "CONSISTENCY_MODEL_REQUIRED"):
                 begin_review(state_path, "consistency", "flow-spec", "spec:M1", "gpt-5.6-sol", "high", cursor_passed["state_revision"])
