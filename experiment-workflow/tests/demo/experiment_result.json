@@ -1,0 +1,137 @@
+{
+  "experiment": "EXP-DEMO-001",
+  "issue": "issues/3",
+  "dataset_version": "fixed-inline-v1",
+  "parameters": {
+    "baseline": "original query string",
+    "candidate": "lower+strip",
+    "pairing": "same fixed sample for baseline and candidate"
+  },
+  "sample_count": 6,
+  "baseline": {
+    "correct": 2,
+    "total": 6,
+    "success_rate": 0.3333333333333333
+  },
+  "candidate": {
+    "correct": 5,
+    "total": 6,
+    "success_rate": 0.8333333333333334
+  },
+  "samples": [
+    {
+      "sample_id": "case-01",
+      "query": "  HELLO ",
+      "label": "hello",
+      "baseline": {
+        "sample_id": "case-01",
+        "strategy": "baseline",
+        "prediction": "  HELLO ",
+        "label": "hello",
+        "success": false
+      },
+      "candidate": {
+        "sample_id": "case-01",
+        "strategy": "candidate",
+        "prediction": "hello",
+        "label": "hello",
+        "success": true
+      }
+    },
+    {
+      "sample_id": "case-02",
+      "query": "bye",
+      "label": "bye",
+      "baseline": {
+        "sample_id": "case-02",
+        "strategy": "baseline",
+        "prediction": "bye",
+        "label": "bye",
+        "success": true
+      },
+      "candidate": {
+        "sample_id": "case-02",
+        "strategy": "candidate",
+        "prediction": "bye",
+        "label": "bye",
+        "success": true
+      }
+    },
+    {
+      "sample_id": "case-03",
+      "query": "HELLO",
+      "label": "hello",
+      "baseline": {
+        "sample_id": "case-03",
+        "strategy": "baseline",
+        "prediction": "HELLO",
+        "label": "hello",
+        "success": false
+      },
+      "candidate": {
+        "sample_id": "case-03",
+        "strategy": "candidate",
+        "prediction": "hello",
+        "label": "hello",
+        "success": true
+      }
+    },
+    {
+      "sample_id": "case-04",
+      "query": "bye!",
+      "label": "bye",
+      "baseline": {
+        "sample_id": "case-04",
+        "strategy": "baseline",
+        "prediction": "bye!",
+        "label": "bye",
+        "success": false
+      },
+      "candidate": {
+        "sample_id": "case-04",
+        "strategy": "candidate",
+        "prediction": "bye!",
+        "label": "bye",
+        "success": false
+      }
+    },
+    {
+      "sample_id": "case-05",
+      "query": "hello",
+      "label": "hello",
+      "baseline": {
+        "sample_id": "case-05",
+        "strategy": "baseline",
+        "prediction": "hello",
+        "label": "hello",
+        "success": true
+      },
+      "candidate": {
+        "sample_id": "case-05",
+        "strategy": "candidate",
+        "prediction": "hello",
+        "label": "hello",
+        "success": true
+      }
+    },
+    {
+      "sample_id": "case-06",
+      "query": "  bye",
+      "label": "bye",
+      "baseline": {
+        "sample_id": "case-06",
+        "strategy": "baseline",
+        "prediction": "  bye",
+        "label": "bye",
+        "success": false
+      },
+      "candidate": {
+        "sample_id": "case-06",
+        "strategy": "candidate",
+        "prediction": "bye",
+        "label": "bye",
+        "success": true
+      }
+    }
+  ]
+}

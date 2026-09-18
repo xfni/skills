@@ -1,0 +1,4 @@
+interface:
+  display_name: "数据实验"
+  short_description: "讨论实验目标与配额，组织生产样本采集、本地多轮试验和独立证据核验"
+  default_prompt: "使用 $exp-run 为指定需求讨论实验方案，协商配额并在确认后自主执行数据实验。"

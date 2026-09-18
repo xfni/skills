@@ -1,0 +1,8 @@
+command: python experiment-workflow/tests/demo/demo_experiment.py --output experiment-workflow/tests/demo/experiment_result.json
+exit_code: 0
+stdout: see experiment_result.json (same complete machine-readable report; stdout was one-line JSON)
+
+The complete six-sample JSON output is preserved at experiment_result.json. Its observed metrics are:
+baseline: {"correct": 2, "success_rate": 0.3333333333333333, "total": 6}
+candidate: {"correct": 5, "success_rate": 0.8333333333333334, "total": 6}
+candidate failures: case-04 query="bye!" label="bye" prediction="bye!"

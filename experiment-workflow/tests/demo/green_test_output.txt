@@ -1,0 +1,8 @@
+command: python -m unittest discover -s experiment-workflow/tests/demo -p 'test_*.py'
+exit_code: 0
+
+...
+----------------------------------------------------------------------
+Ran 3 tests in 0.002s
+
+OK

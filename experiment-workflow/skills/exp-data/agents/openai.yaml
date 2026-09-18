@@ -1,0 +1,4 @@
+interface:
+  display_name: "实验数据"
+  short_description: "为项目实验只读采集业务样本，评估数据有效性与脱敏后的实验适用性"
+  default_prompt: "使用 $exp-data 按已确认的实验范围采集并检查数据，提供脱敏后样本和有效性说明。"
