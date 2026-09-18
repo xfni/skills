@@ -1,0 +1,23 @@
+command: python -m unittest discover -s experiment-workflow/tests/demo -p 'test_*.py'
+exit_code: 1
+
+FFF
+======================================================================
+FAIL: test_baseline_and_candidate_use_distinct_prediction_rules (test_demo_experiment.DemoExperimentTests)
+----------------------------------------------------------------------
+AssertionError: demo_experiment implementation is missing: No module named 'demo_experiment'
+
+======================================================================
+FAIL: test_driver_preserves_paired_rows_and_failure_details (test_demo_experiment.DemoExperimentTests)
+----------------------------------------------------------------------
+AssertionError: demo_experiment implementation is missing: No module named 'demo_experiment'
+
+======================================================================
+FAIL: test_success_rate_counts_fixed_boolean_outcomes (test_demo_experiment.DemoExperimentTests)
+----------------------------------------------------------------------
+AssertionError: demo_experiment implementation is missing: No module named 'demo_experiment'
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.000s
+
+FAILED (failures=3)
