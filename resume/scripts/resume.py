@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Read-only helpers for selecting the primary Codex session."""
 
+import argparse
 import json
 import os
 from pathlib import Path
@@ -234,7 +235,16 @@ def _append_directory(
         primary_path = primary_cwd.resolve()
     except OSError:
         primary_path = primary_cwd
-    if canonical_path == primary_path or canonical_path in seen:
+    try:
+        codex_home = (Path.home() / ".codex").resolve()
+        is_codex_runtime_directory = canonical_path.is_relative_to(codex_home)
+    except OSError:
+        is_codex_runtime_directory = False
+    if (
+        canonical_path == primary_path
+        or canonical_path in seen
+        or is_codex_runtime_directory
+    ):
         return
     seen.add(canonical_path)
     directories.append(path)
@@ -313,7 +323,21 @@ def render_command(primary_cwd: Path, session_id: str, added_dirs: list[Path]) -
     return cd_line + "\n" + " \\\n".join(resume_lines)
 
 
-def main() -> int:
+def _selection(value: str, count: int) -> list[int]:
+    try:
+        selected = [int(part.strip()) for part in value.split(",")]
+    except ValueError as error:
+        raise ResumeError("directory selection must be comma-separated numbers") from error
+    if not selected or any(number < 1 or number > count for number in selected):
+        raise ResumeError("directory selection is outside the candidate range")
+    return list(dict.fromkeys(number - 1 for number in selected))
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--list-candidates", action="store_true")
+    parser.add_argument("--include")
+    arguments = parser.parse_args([] if argv is None else argv)
     try:
         thread_id = os.environ.get("CODEX_THREAD_ID")
         if not thread_id:
@@ -325,10 +349,23 @@ def main() -> int:
         if directory is None:
             raise ResumeError(f"primary session cwd must be an existing absolute directory: {session_file}")
         primary_cwd, _ = directory
+        candidates = directories_from_session(session_file, primary_cwd)
+        if arguments.list_candidates:
+            print("当前会话已添加目录：不可获取；以下为历史工作候选：")
+            for index, candidate in enumerate(candidates, start=1):
+                print(f"{index}. [历史工作目录] {candidate}")
+            return 0
+        if arguments.include is not None:
+            candidates = [candidates[index] for index in _selection(arguments.include, len(candidates))]
+        elif len(candidates) > 1:
+            raise ResumeError(
+                "multiple directory candidates found; run with --list-candidates, "
+                "then rerun with --include 1,3"
+            )
         command = render_command(
             primary_cwd,
             payload["session_id"],
-            directories_from_session(session_file, primary_cwd),
+            candidates,
         )
     except ResumeError as error:
         print(str(error), file=sys.stderr)
@@ -338,4 +375,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))

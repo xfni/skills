@@ -321,6 +321,36 @@ class ResumeSkillTests(unittest.TestCase):
             [nested_response_item_workdir],
         )
 
+    def test_directories_from_session_excludes_codex_runtime_directories(self):
+        root = Path(self.tempdir.name)
+        primary = root / "primary"
+        business_directory = root / "feature-worktree"
+        codex_directory = root / ".codex" / "plugins" / "cache" / "skill"
+        for directory in (primary, business_directory, codex_directory):
+            directory.mkdir(parents=True, exist_ok=True)
+        session = root / "session.jsonl"
+        source = (
+            f"tools.exec_command({json.dumps({'workdir': str(business_directory)})}); "
+            f"tools.exec_command({json.dumps({'workdir': str(codex_directory)})})"
+        )
+        write_records(
+            session,
+            [{
+                "type": "response_item",
+                "payload": {
+                    "type": "custom_tool_call",
+                    "name": "exec",
+                    "input": source,
+                },
+            }],
+        )
+
+        with mock.patch.object(Path, "home", return_value=root):
+            self.assertEqual(
+                resume.directories_from_session(session, primary),
+                [business_directory],
+            )
+
 
 class ResumeCommandTests(unittest.TestCase):
     def setUp(self):
@@ -415,6 +445,28 @@ class ResumeCommandTests(unittest.TestCase):
         self.assertEqual(status, 0)
         self.assertEqual(stderr, "")
         self.assertEqual(stdout, f'cd -- "{primary}"\ncodex resume "resume-1" \\\n  --add-dir "{added}"\n')
+
+    def test_main_requires_selection_when_multiple_history_candidates_exist(self):
+        primary = self.root / "primary"
+        first = self.root / "first"
+        second = self.root / "second"
+        for directory in (primary, first, second):
+            directory.mkdir()
+        session = self.create_primary(str(primary))
+        with session.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps({"payload": {"item": {
+                "type": "custom_tool_call", "name": "exec",
+                "input": (
+                    f"tools.exec_command({json.dumps({'workdir': str(first)})}); "
+                    f"tools.exec_command({json.dumps({'workdir': str(second)})})"
+                ),
+            }}}) + "\n")
+
+        status, stdout, stderr = self.invoke_main()
+
+        self.assertNotEqual(status, 0)
+        self.assertEqual(stdout, "")
+        self.assertIn("--list-candidates", stderr)
 
     def test_main_requires_thread_id(self):
         status, stdout, stderr = self.invoke_main(thread_id=None)
