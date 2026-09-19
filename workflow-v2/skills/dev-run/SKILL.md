@@ -66,6 +66,32 @@ Apply the Test infrastructure permission section of `../../flow-contract.md`. Pr
 
 Read and enforce [the frozen worktree review contract](../../review-contract.md). Review the complete filtered frozen worktree with independent exploration of source, tests and secrets exclusions; the root brief is not sole evidence. iBrain is organization-trusted; no external-review authorization gate. Reviewer returns stdout/API only and never writes worktree. Freeze by digest (no automatic commit); source/private snapshot verification and single-use package binding are controller-owned.
 
+## Authorization Forecast and preflight
+
+Do not wait for Code or Integration to discover every foreseeable authority gap. During Requirement discovery, use targeted read-only inspection of relevant source, configuration precedence, launch scripts and runbooks to prepare one `Authorization Forecast`. Present it inside the existing final Requirement Decision Brief and confirmation, not as another gate. A Direct/raw bootstrap prepares the same forecast in its binding charter before unattended downstream execution.
+
+The forecast lists only actions reasonably expected for this issue, with the evidence or reason for each:
+
+- production read sources and data classes, including the intended source, operation, time/sample/query boundary and retry cap; this never grants production writes;
+- every private model or external endpoint, with the exact receiver, endpoint/model when discoverable, payload class, purpose and disclosure exclusions;
+- named non-production test dependencies and their database, namespace, index, queue, bucket/prefix or tenant boundaries, expected reads/writes and retention behavior;
+- local services and worktree paths/change categories the Flow expects to use;
+- reviewer-visible evidence classes and exclusions, without creating a separate Cursor/iBrain authorization gate;
+- bounded calls, retries, and cost or time limits, plus automatic actions and stop conditions; and
+- exclusions such as deployment, production writes, destructive operations, Git push/merge and any irreversible action not explicitly requested.
+
+Never guess an address, namespace, receiver or model that is injected only at runtime. Write it as `UNRESOLVED(runtime:<source-or-key>)` with the checked source and the exact predicate under which it may proceed, for example a project-approved isolated non-production target within a named namespace/payload/call cap. The human may confirm that conditional boundary, not an arbitrary future target. Preflight resolution inside the predicate continues without another question; a result outside it needs only delta authorization. An unresolved receiver or data class with no safe, specific predicate is not authorized and must be resolved before the affected transfer.
+
+Treat the initial `production_replay` choice as an inherited confirmed decision in this forecast, not a repeated yes/no question. The forecast supplies the concrete source, operation, data class and cap allowed by that decision. Changing the choice uses its amendment path; an initial skip cannot be broadened by forecast wording.
+
+End the forecast with a short copyable confirmation tied to the displayed issue and Requirement/charter revision. The human may confirm the displayed package or amend individual clauses. Record the authorization source and exclusions in Requirement human-source/approval evidence. The confirmation permits forecasted actions within their limits; it does not replace host sandbox, network, credential permission, applicable project policy, or the initial production-replay decision.
+
+After confirmation, run a `non-destructive authorization preflight` before unattended downstream execution. Check the verified worktree and allowed paths, presence (never values) of required credential variables, resolved environment/target identity, supported non-production namespaces, local bind/start feasibility, reviewer tooling, and endpoint/model availability. Use only the smallest safe read-only inspection or explicitly authorized low-cost probe; count probes against the confirmed limits. Never discover authority by writing production, sending arbitrary/customer data, deploying, pushing Git, deleting data, dumping secrets or bypassing a host refusal.
+
+When a predicted probe requires a real host permission, request that permission through the actual host mechanism while the human is present. A denial or unavailable credential is an environment fact, not a reason to re-ask for the same business authorization. Try safe configuration/discovery alternatives, then present all remaining human actions in one readable list with the exact affected operation and recovery step. A successful preflight reduces late pauses but is not proof that credentials, quota or infrastructure cannot fail later.
+
+At Roadmap, Spec, Plan, Code and Integration, silently compare newly discovered actions with the active forecast. Continue without interruption inside it. If a necessary action truly exceeds it, request only `delta authorization` for the changed data source/class, receiver/model, dependency, side effect, budget or irreversible operation; preserve every unaffected clause and update the bound evidence. Missing forecast metadata in an older run is not a controller gate and must not route the Flow back: derive current authority from the human source and artifacts, then add a forecast at the next genuine human gate or request only the missing delta.
+
 ## Resolve the starting stage
 
 Treat `pending_action` as a recommendation, not an exhaustive permission list. Agent chooses authorized safe actions using current facts, including allowed reviewer takeover, iBrain, `snapshot:capture`, and `approve:<kind>`; do not reset every reviewed-stage resume to GPT. Approval actions are downstream envelope updates, not new human gates: follow `../../flowctl-contract.md`, register unchanged BODY again, and continue automatically when the handoff action is returned.

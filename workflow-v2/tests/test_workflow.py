@@ -161,6 +161,36 @@ class WorkflowV2Tests(unittest.TestCase):
         ):
             self.assertIn(value, text)
 
+    def test_dev_run_forecasts_authority_and_preflights_before_unattended_execution(self):
+        runner = self.skill("dev-run")
+        requirement = self.skill("dev-requirement")
+        contract = (ROOT / "flow-contract.md").read_text()
+        for value in (
+            "Authorization Forecast",
+            "production read sources and data classes",
+            "private model or external endpoint",
+            "bounded calls, retries, and cost",
+            "non-destructive authorization preflight",
+            "before unattended downstream execution",
+            "delta authorization",
+            "does not replace host sandbox, network, credential",
+            "UNRESOLVED(runtime:<source-or-key>)",
+            "inherited confirmed decision",
+        ):
+            self.assertIn(value, runner)
+        for value in (
+            "Authorization Forecast",
+            "same final Requirement confirmation",
+            "authorization source and exclusions",
+            "UNRESOLVED(runtime:<source-or-key>)",
+            "inherited confirmed decision",
+            "after confirmation, first run the safe preflight",
+        ):
+            self.assertIn(value, requirement)
+        self.assertIn("authorization forecast is Agent-maintained evidence", contract)
+        self.assertIn("must not become a new controller schema", contract)
+        self.assertIn("UNRESOLVED(runtime:<source-or-key>)", contract)
+
     def test_requirement_swarm_rejects_unjustified_platformization(self):
         requirement = self.skill("dev-requirement")
         brainstorm = self.skill("dev-brainstorm")
@@ -559,6 +589,27 @@ class WorkflowV2Tests(unittest.TestCase):
         for stage_name in ("dev-run", "dev-plan"):
             stage = self.skill(stage_name)
             self.assertIn("retain real test-environment business writes", stage)
+
+    def test_integration_scripts_prove_connectivity_but_agent_judges_correctness_from_evidence(self):
+        integration = self.skill("dev-integration")
+        plan = self.skill("dev-plan")
+        for value in (
+            "connectivity and evidence-collection harness",
+            "must not determine business correctness",
+            "exit code `0` proves only",
+            "must not emit a business `PASSED` or `FAILED` verdict",
+            "Agent owns the semantic verdict",
+            "response, logs, audit records, database state",
+            "Evidence missing from a successful harness run remains unverified",
+        ):
+            self.assertIn(value, integration)
+        for value in (
+            "connectivity harness",
+            "evidence oracle",
+            "Agent decision rule",
+            "must not encode the business verdict",
+        ):
+            self.assertIn(value, plan)
 
     def test_local_service_may_use_authorized_isolated_test_dependencies(self):
         integration = self.skill("dev-integration")
