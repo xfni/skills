@@ -1,0 +1,6 @@
+interface:
+  display_name: "Dev Run"
+  short_description: "Run or resume the complete AI-native Flow v2 workflow"
+  default_prompt: "Use $dev-run to select an initial entry or resume the recorded position and continuously orchestrate the remaining Flow v2 stages."
+policy:
+  allow_implicit_invocation: false

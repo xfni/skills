@@ -1,6 +1,0 @@
-interface:
-  display_name: "Flow Spec"
-  short_description: "Specify one roadmap milestone"
-  default_prompt: "Use $flow-spec for this confirmed roadmap milestone."
-policy:
-  allow_implicit_invocation: false

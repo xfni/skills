@@ -1,17 +1,19 @@
 # AI-Native Flow V2
 
+The public development skills are now `dev-*`. Start with `$dev-run`; old `flow-*` skill aliases are not installed. The package directory, `flowctl` executable, internal `flow-*` stage IDs and existing controller/artifact formats remain unchanged. See the [skill-to-stage mapping](flowctl-contract.md#public-skills-and-stable-controller-stages) before constructing CLI or handoff inputs. Resume existing issues with `$dev-run` without rewriting their state or restarting a healthy coder thread.
+
 An explicit-only, self-contained workflow with one continuous orchestrator and eight bounded stages. Flow itself owns issue admission, worktree isolation, artifact bindings, and orchestration; it remains complete without `AGENTS.md`.
 
 ```text
-$flow-run          -> choose an initial entry / resume recorded position and orchestrate the flow
-$flow-brainstorm   -> confirmed human brainstorming result
-$flow-requirement  -> requirement.md
-$flow-intent       -> intent.md
-$flow-roadmap      -> roadmap.md
-$flow-spec         -> spec.md for one milestone
-$flow-plan         -> plan.md
-$flow-code         -> code + unit-test evidence
-$flow-integration  -> integration evidence
+$dev-run          -> choose an initial entry / resume recorded position and orchestrate the flow
+$dev-brainstorm   -> confirmed human brainstorming result
+$dev-requirement  -> requirement.md
+$dev-intent       -> intent.md
+$dev-roadmap      -> roadmap.md
+$dev-spec         -> spec.md for one milestone
+$dev-plan         -> plan.md
+$dev-code         -> code + unit-test evidence
+$dev-integration  -> integration evidence
 ```
 
 ## Stage boundaries
@@ -20,15 +22,15 @@ Agent leads the workflow; flowctl checks and records only deterministic facts fo
 
 | Skill | Responsibility | Human gate |
 | --- | --- | --- |
-| `flow-run` | Issue/worktree admission, starting-stage detection, verified handoffs, pause/resume, and failure routing | Requests missing admission or genuinely necessary authority only. |
-| `flow-brainstorm` | Human exploration and option comparison | Human confirms the discussion summary, not final intent. |
-| `flow-requirement` | Inherit human discussion; moderator-led, two-view exploration and boundary challenges over 3–12 rounds | Reuse confirmed brainstorming records; human resolves remaining product choices and authorizes the final Requirement once. |
-| `flow-intent` | Normalize the authorized Requirement into authoritative intent | Autonomous under `flow-run`; unresolved product choices route back. |
-| `flow-roadmap` | Milestones, dependencies, and acceptance direction | Autonomous under `flow-run`; milestones are selected deterministically. |
-| `flow-spec` | Observable behavioral rules for that milestone | Standard GPT + external; permitted single independent chain with a gap. |
-| `flow-plan` | File-level executable tasks and verification contract | Standard GPT + external; permitted single independent chain with a gap. |
-| `flow-code` | TDD implementation and unit/regression evidence | No integration claim; blocking findings stop completion. |
-| `flow-integration` | Cross-component and end-to-end validation | Missing environment or authority is reported as blocked. |
+| `dev-run` | Issue/worktree admission, starting-stage detection, verified handoffs, pause/resume, and failure routing | Requests missing admission or genuinely necessary authority only. |
+| `dev-brainstorm` | Human exploration and option comparison | Human confirms the discussion summary, not final intent. |
+| `dev-requirement` | Inherit human discussion; moderator-led, two-view exploration and boundary challenges over 3–12 rounds | Reuse confirmed brainstorming records; human resolves remaining product choices and authorizes the final Requirement once. |
+| `dev-intent` | Normalize the authorized Requirement into authoritative intent | Autonomous under `dev-run`; unresolved product choices route back. |
+| `dev-roadmap` | Milestones, dependencies, and acceptance direction | Autonomous under `dev-run`; milestones are selected deterministically. |
+| `dev-spec` | Observable behavioral rules for that milestone | Standard GPT + external; permitted single independent chain with a gap. |
+| `dev-plan` | File-level executable tasks and verification contract | Standard GPT + external; permitted single independent chain with a gap. |
+| `dev-code` | TDD implementation and unit/regression evidence | No integration claim; blocking findings stop completion. |
+| `dev-integration` | Cross-component and end-to-end validation | Missing environment or authority is reported as blocked. |
 
 ## Review and replay lifecycle
 
@@ -52,21 +54,23 @@ Every stage must read and follow [`flow-contract.md`](flow-contract.md), [`artif
 
 ## Codex setup
 
-Production-data policy migration: existing `SANITIZED_LOCAL_REPLAY` decisions and old adapter bindings stay as historical records, not sanitization/deletion proof. Reuse their scoped local-use authority without broadening a narrower human/project instruction. Adapter-only pauses can be resumed with a bound signal after checking actual safety obstacles; do not rewrite controller history. `flowctl replay validate/run/cleanup` and production manifest validation are retired. Existing project runners provide real execution evidence; only temporary-service and test-side-effect cleanup is part of Flow completion.
+Production-data policy migration: existing `SANITIZED_LOCAL_REPLAY` decisions and old adapter bindings stay as historical records, not sanitization/deletion proof. Reuse their scoped local-use authority without broadening a narrower human/project instruction. Adapter-only pauses can be resumed with a bound signal after checking actual safety obstacles; do not rewrite controller history. `flowctl replay validate/run/cleanup` and production manifest validation are retired. Existing project runners provide real execution evidence. Integration retains business writes made through real requests in the named test environment; automatic cleanup is limited to run-owned services/processes, ports, locks, and transient non-evidence files unless a human or applicable project rule explicitly requires more.
 
-Explicit `$flow-run` invocation requests creation/reuse of a matching runtime Goal through the host's real tools; no separate `/goal` is needed when those tools are available. Unrelated unfinished Goals are never replaced without explicit human direction; host pause/budget limits remain binding. `flowctl goal record` persists observed recovery context only, not runtime activation or Flow approval. Without Goal tools, the same-turn controller loop remains usable, but durable continuation is not claimed.
+Explicit `$dev-run` invocation requests creation/reuse of a matching runtime Goal through the host's real tools; no separate `/goal` is needed when those tools are available. Unrelated unfinished Goals are never replaced without explicit human direction; host pause/budget limits remain binding. `flowctl goal record` persists observed recovery context only, not runtime activation or Flow approval. Without Goal tools, the same-turn controller loop remains usable, but durable continuation is not claimed.
 
 For a real Goal/task conflict, Flow explains the old/new tasks and asks for direction once; an explicit replacement instruction already supplies it. Automatic replacement requires an actually available host-permitted capability. Otherwise the same message supplies `/goal clear` for the current conversation, followed by continuation of the chosen task; Flow verifies an empty Goal before creating the new one. Timeout/error requires readback, not blind clearing. Old work stays unfinished and preserved, scope/permissions are not inherited, and replacement does not waive budgets or host restrictions. Same-task recovery does not normally require clearing.
 
-Install the nine directories under `skills/` into `~/.codex/skills/`. Also copy `flowctl.py`, `flowctl_lib/`, and `schemas/` together to `~/.codex/flow-v2/`; skills resolve that packaged executable when they are not running from this repository. Invoke `$flow-run` for continuous orchestration or an individual stage for direct control. `flow-requirement` requires `flow-brainstorm` and also needs its two custom Agent TOMLs copied from `skills/flow-requirement/agents/` into `~/.codex/agents/`:
+Install the nine directories under `skills/` into `~/.codex/skills/`. Also copy `flowctl.py`, `flowctl_lib/`, and `schemas/` together to `~/.codex/flow-v2/`; skills resolve that packaged executable when they are not running from this repository. Invoke `$dev-run` for continuous orchestration or an individual stage for direct control. `dev-requirement` requires `dev-brainstorm` and also needs its two custom Agent TOMLs copied from `skills/dev-requirement/agents/` into `~/.codex/agents/`:
 
 ```text
-flow-requirement-value.toml
-flow-requirement-risk.toml
-flow-coder.toml
+dev-requirement-value.toml
+dev-requirement-risk.toml
+dev-coder.toml
 ```
 
-Copy `skills/flow-code/agents/flow-coder.toml` to `~/.codex/agents/flow-coder.toml`. The coder is created lazily only after an approved Plan reaches `flow-code`, then the same session-scoped thread is reused for sequential `TASK-*` work; it is not started when a Codex session opens.
+Copy `skills/dev-code/agents/dev-coder.toml` to `~/.codex/agents/dev-coder.toml`. The coder is created lazily only after an approved Plan reaches `dev-code`, then the same session-scoped thread is reused for sequential `TASK-*` work; it is not started when a Codex session opens.
+
+Copy the shared `*-contract.md` files to `~/.codex/flow-v2/` as well. In the separately installed skill entry copies, rewrite `../../<contract>.md` to `../../flow-v2/<contract>.md`; keep repository and packaged `flow-v2/skills/` copies unchanged. Move previous `flow-*` skill directories and the three old role TOMLs outside Codex's discoverable skill/agent directories after validating the new installation. Update any global workflow routing trigger from `$flow-run` to `$dev-run`, preserving stricter safety rules and unrelated instructions.
 
 Restart Codex after updating custom Agent TOMLs. Review uses independent-review, cursor-review and ibrain-review as available under review-contract.md. Record human-selected iBrain with review select-external and route restrictions/unavailability with review degrade. Other stages retain their stated skill dependencies.
 

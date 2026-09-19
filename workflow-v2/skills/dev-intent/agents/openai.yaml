@@ -1,0 +1,6 @@
+interface:
+  display_name: "Dev Intent"
+  short_description: "Grill and confirm a prepared requirement"
+  default_prompt: "Use $dev-intent to challenge this requirement.md and produce intent.md."
+policy:
+  allow_implicit_invocation: false

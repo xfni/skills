@@ -1,0 +1,6 @@
+interface:
+  display_name: "Dev Roadmap"
+  short_description: "Turn confirmed intent into delivery milestones"
+  default_prompt: "Use $dev-roadmap with requirement.md and intent.md to produce roadmap.md."
+policy:
+  allow_implicit_invocation: false

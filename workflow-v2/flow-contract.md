@@ -1,13 +1,13 @@
 # Flow v2 Admission Contract
 
-This contract is part of Flow v2 and does not depend on `AGENTS.md`. `$flow-run` and every directly invoked Flow stage must read and enforce it before reading or writing Flow artifacts.
+This contract is part of Flow v2 and does not depend on `AGENTS.md`. `$dev-run` and every directly invoked Flow stage must read and enforce it before reading or writing Flow artifacts.
 
 For every admission, permission or recovery question, apply Human-readable interruption in `orchestration-contract.md`, including before a controller exists. Explain the smallest missing input and what follows; keep internal bindings as evidence. This adds no authorization gate.
 
 ## Issue identity
 
 - Feature work requires a human-provided issue ID. The agent must not infer or invent it from a branch, path, repository, artifact, PMS result, or goal.
-- `$flow-run` owns Flow admission. When the current conversation and a verified controller contain no human-provided issue ID, request it exactly once and stop. Record its human provenance in the controller.
+- `$dev-run` owns Flow admission. When the current conversation and a verified controller contain no human-provided issue ID, request it exactly once and stop. Record its human provenance in the controller.
 - Ask in plain language: “还缺本次需求的议题编号，用于把文档、代码和测试归到同一项工作。请提供 issue 编号，例如 BCS-710 或项目已有的议题编号；收到后我会核验工作目录并继续。” Do not invent a number or ask for controller metadata.
 - Every stage must verify silently that its input artifacts, controller, branch, and worktree carry that same issue ID. A valid inherited binding must not cause another prompt. A conflict returns `FLOW_ADMISSION_BLOCKED`; absence under direct invocation returns `FLOW_ADMISSION_GATE` for an issue ID.
 
@@ -32,11 +32,11 @@ Direct invocation performs this same admission when no controller exists. It may
 
 ## Human interaction boundary
 
-After controller/worktree admission and before requirement work, `$flow-run` asks whether production data may be acquired and used for local testing. Flow does not own sanitization or data deletion proofs; project policy and host permissions remain authoritative. External review is not an authorization gate. Production decisions persist through authorization IDs; resume reuses active scope and changed decisions use the amendment transition.
+After controller/worktree admission and before requirement work, `$dev-run` asks whether production data may be acquired and used for local testing. Flow does not own sanitization or data deletion proofs; project policy and host permissions remain authoritative. External review is not an authorization gate. Production decisions persist through authorization IDs; resume reuses active scope and changed decisions use the amendment transition.
 
 ### Test infrastructure permission
 
-At the initial interaction, explicitly disclose the common non-production test permission independently of the production-replay choice: either choice permits starting the temporary local application and using project-approved, verifiably isolated test dependencies for this issue. Common dependencies include SQL/Mongo databases, Redis, Elasticsearch/OpenSearch, queues/brokers and object storage. Permit only scenario-required reads/writes within the selected test database, namespace, index, queue, bucket/prefix or tenant; clean up only data/resources created by this run. No permission to use production or unknown endpoints, change shared/global configuration, or delete pre-existing data is implied.
+At the initial interaction, explicitly disclose the common non-production test permission independently of the production-replay choice: either choice permits starting the temporary local application and using project-approved, verifiably isolated test dependencies for this issue. Common dependencies include SQL/Mongo databases, Redis, Elasticsearch/OpenSearch, queues/brokers and object storage. Permit only scenario-required reads/writes within the selected test database, namespace, index, queue, bucket/prefix or tenant. Persistent business writes produced by real test requests are retained as part of simulated real execution; Flow must not delete or roll back those writes unless the human or an applicable project rule explicitly requires that exact cleanup. Automatic cleanup is limited to run-owned processes/containers, ports, locks, and transient non-evidence files. No permission to use production or unknown endpoints, change shared/global configuration, or delete pre-existing data is implied.
 
 Retain the actual human confirmation in the Requirement human-source context, or the confirmed Direct charter, and cite it in Integration evidence. The production_replay controller decision continues to represent production data only; do not invent a middleware authorization ID or treat a historical replay decision as acceptance of this newly disclosed permission. Existing project/Plan/charter permissions remain valid; ask once only when a necessary dependency or side effect is outside them. Missing optional permission metadata is not a controller gate.
 

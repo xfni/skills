@@ -1,6 +1,0 @@
-interface:
-  display_name: "Flow Plan"
-  short_description: "Plan implementation of an approved specification"
-  default_prompt: "Use $flow-plan to turn this approved spec.md into plan.md."
-policy:
-  allow_implicit_invocation: false

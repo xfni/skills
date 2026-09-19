@@ -1,5 +1,21 @@
 # Flowctl: facts and accounting for Agent-led Flow
 
+## Public skills and stable controller stages
+
+Public skill names use `dev-*`; controller stage IDs remain `flow-*`. Dispatch the skill in the left column when status/resume returns the ID in the right column. Use the right column in CLI `--stage`, review bindings and handoff `stage`/`from_stage`/`next_stage`/`owner_stage` fields; never copy a public skill name into those fields.
+
+| Public skill | Controller stage ID |
+| --- | --- |
+| `$dev-requirement` | `flow-requirement` |
+| `$dev-intent` | `flow-intent` |
+| `$dev-roadmap` | `flow-roadmap` |
+| `$dev-spec` | `flow-spec` |
+| `$dev-plan` | `flow-plan` |
+| `$dev-code` | `flow-code` |
+| `$dev-integration` | `flow-integration` |
+
+`$dev-run` is the orchestrator and `$dev-brainstorm` is a discussion helper, not controller stages. Keep `flowctl`, `FLOW_RUN_*` signals and the compatibility envelope `caller: flow-run` unchanged. Existing artifacts, controller files, approvals and review history need no naming migration. There are no old public skill aliases.
+
 ## Cooperation boundary
 
 Agent owns starting-stage selection, authorized next actions, semantic impact, evidence sufficiency, coverage and uncertainty diagnosis. Controller owns actual identities/digests, original receipts, finite process budgets and atomic acceptance/accounting. It does not prove business correctness or coordinate every possible exception.
@@ -74,6 +90,6 @@ BLOCKED/FAILED signals may record startup/permission/error/unexecuted evidence w
 
 Record human/blocked/route/resumed signals with signal record and schemas/signal.schema.json. FLOW_RUN_RESUMED alone clears an actual pause; optional pause_revision binds its original signal, automatically derived when unambiguous for legacy callers. A mismatched/unknown pause stays paused. Controller records Agent-observed release evidence, not proof of natural-language truth or host permission.
 
-goal record persists the real host Goal reference (threadId, createdAt, objective, status), retains replacement history and never advances Flow or clears pauses. A historical blocked Goal reference is not a controller gate; flow-run respects real host state and explicit human continuation. coder update remains the sole writer of the one session-scoped coder lifecycle.
+goal record persists the real host Goal reference (threadId, createdAt, objective, status), retains replacement history and never advances Flow or clears pauses. A historical blocked Goal reference is not a controller gate; dev-run respects real host state and explicit human continuation. coder update remains the sole writer of the one session-scoped coder lifecycle.
 
 This repository cannot force a host to call flowctl. Mechanical checks prevent accepted false progress, not all Agent semantic errors; mandatory host tool routing is outside this package.

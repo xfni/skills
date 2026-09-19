@@ -1,4 +1,4 @@
-# Flow Run Orchestration Contract
+# Dev Run Orchestration Contract
 
 ## Unified stage summary
 
@@ -62,7 +62,7 @@ optional coder_agent: coder_thread_id; coder_model; coder_effort; active_task; c
 optional authorization_bindings: production_replay authorization_id/revision; external review package binding
 ```
 
-Without that envelope, use **Direct invocation** behavior and keep the stage's normal stop-and-suggest-next response. With it, use **Orchestrated invocation** behavior: preserve every stage rule and gate, but return exactly one signal to `$flow-run` instead of ending with a manual next-skill instruction.
+Without that envelope, use **Direct invocation** behavior and keep the stage's normal stop-and-suggest-next response. With it, use **Orchestrated invocation** behavior: preserve every stage rule and gate, but return exactly one signal to `$dev-run` instead of ending with a manual next-skill instruction.
 
 ```json
 {
@@ -76,7 +76,7 @@ Without that envelope, use **Direct invocation** behavior and keep the stage's n
 }
 ```
 
-The child stage returns this payload without accepting it. The root `$flow-run` writes the temporary JSON and calls `flowctl handoff accept` exactly once, then continues from its returned state. Paths, revisions, digests, review counts and open gaps come from controller state; do not duplicate them as mandatory caller declarations. In Direct mode the stage owns its single acceptance when explicitly progressing; there is no second root acceptance.
+The child stage returns this payload without accepting it. The root `$dev-run` writes the temporary JSON and calls `flowctl handoff accept` exactly once, then continues from its returned state. Paths, revisions, digests, review counts and open gaps come from controller state; do not duplicate them as mandatory caller declarations. In Direct mode the stage owns its single acceptance when explicitly progressing; there is no second root acceptance.
 
 Other semantic signals remain:
 
@@ -103,17 +103,17 @@ stage; cause; evidence; controller_path; resume_condition
 
 Serialize each non-success signal according to `schemas/signal.schema.json` and call `flowctl signal record`. A prose signal is not durable state and must not be used to resume, block, or route the workflow.
 
-- `FLOW_RUN_HANDOFF` is non-terminal. `flowctl handoff accept` validates it and changes controller stage; `$flow-run` then continues to the returned stage in the same active turn. The stage must not suggest or ask the human to invoke that next skill.
+- `FLOW_RUN_HANDOFF` is non-terminal. `flowctl handoff accept` validates it and changes controller stage; `$dev-run` then continues to the returned stage in the same active turn. The stage must not suggest or ask the human to invoke that next skill.
 - `FLOW_RUN_HUMAN_GATE` is the only normal pause for human input. Persist the exact binding before asking; present the bound scope and decision using Human-readable interruption, not raw bookkeeping. After the human responds, record a bound `FLOW_RUN_RESUMED`, call `flowctl resume`, and continue the controller-returned owning stage; a successful confirmation returns `FLOW_RUN_HANDOFF`.
 - `FLOW_RUN_BLOCKED` pauses only for a real blocked condition and preserves the owning-stage routing. Its user message names the actual obstacle, prior checks and actionable recovery in plain language; a controller error alone is not a request for user consent. Once its recorded resume condition is actually satisfied, record `FLOW_RUN_RESUMED` before calling `flowctl resume`.
 - `FLOW_RUN_RESUMED` is the only signal that clears a recorded HUMAN_GATE or BLOCKED pause. It must bind the same issue, run, and current stage and provide evidence that the recorded resume condition was satisfied.
-- `FLOW_RUN_ROUTE_BACK` is non-terminal. It carries an evidenced Agent-selected repair/scope owner (available FAILED observations when applicable); `$flow-run` invalidates affected downstream bindings and continues at `next_stage` in the same active turn.
-- Only `$flow-run` may emit `FLOW_RUN_COMPLETE`, after its full completion contract is satisfied.
-- `FLOW_ADMISSION_GATE` requests only missing issue identity or a required Codex worktree resume. `FLOW_ADMISSION_BLOCKED` reports an unsafe or inconsistent admission state. `$flow-run` persists either signal and resumes admission before any stage work.
+- `FLOW_RUN_ROUTE_BACK` is non-terminal. It carries an evidenced Agent-selected repair/scope owner (available FAILED observations when applicable); `$dev-run` invalidates affected downstream bindings and continues at `next_stage` in the same active turn.
+- Only `$dev-run` may emit `FLOW_RUN_COMPLETE`, after its full completion contract is satisfied.
+- `FLOW_ADMISSION_GATE` requests only missing issue identity or a required Codex worktree resume. `FLOW_ADMISSION_BLOCKED` reports an unsafe or inconsistent admission state. `$dev-run` persists either signal and resumes admission before any stage work.
 
 Stage-local wording such as "stop" means return control to the orchestrator when `FLOW_RUN_CONTEXT` is present. It never means present a successful child handoff as the final user response. Direct invocation semantics remain unchanged.
 
-`flow-code` alone owns the coder lifecycle. It creates `flow_coder` lazily after Plan admission and dispatches one `TASK-*` at a time to the same session-scoped thread. Coder lifecycle events must be recorded through a flowctl mutation command when that command is available; neither `$flow-run` nor a stage may directly edit controller JSON. Wait timeouts never authorize replacement. Any replacement requires confirmed thread unavailability or a stopped scope/safety violation and a durable `CODER_THREAD_REPLACED` event.
+`dev-code` alone owns the coder lifecycle. It creates `dev_coder` lazily after Plan admission and dispatches one `TASK-*` at a time to the same session-scoped thread. Coder lifecycle events must be recorded through a flowctl mutation command when that command is available; neither `$dev-run` nor a stage may directly edit controller JSON. Wait timeouts never authorize replacement. Any replacement requires confirmed thread unavailability or a stopped scope/safety violation and a durable `CODER_THREAD_REPLACED` event.
 
 Read and enforce [the frozen worktree review contract](review-contract.md). Review the complete filtered frozen worktree with independent exploration; the root brief is not sole evidence. iBrain is organization-trusted; no external-review authorization gate. Reviewer returns stdout/API only and never writes worktree. Freeze by digest (no automatic commit); source/private snapshot verification and single-use package binding are controller-owned.
 

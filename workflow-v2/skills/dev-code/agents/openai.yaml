@@ -1,0 +1,6 @@
+interface:
+  display_name: "Dev Code"
+  short_description: "Implement an approved plan with unit-test evidence"
+  default_prompt: "Use $dev-code to implement this approved plan.md with TDD."
+policy:
+  allow_implicit_invocation: false

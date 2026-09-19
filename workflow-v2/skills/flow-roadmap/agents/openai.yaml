@@ -1,6 +1,0 @@
-interface:
-  display_name: "Flow Roadmap"
-  short_description: "Turn confirmed intent into delivery milestones"
-  default_prompt: "Use $flow-roadmap with requirement.md and intent.md to produce roadmap.md."
-policy:
-  allow_implicit_invocation: false

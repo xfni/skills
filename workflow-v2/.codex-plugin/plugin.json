@@ -16,15 +16,15 @@
     "category": "Productivity",
     "capabilities": ["Write"],
     "defaultPrompt": [
-      "Use $flow-run to detect and continuously orchestrate the Flow v2 stages.",
-      "Use $flow-brainstorm inside requirement exploration.",
-      "Use $flow-requirement to produce requirement.md.",
-      "Use $flow-intent to confirm intent.md.",
-      "Use $flow-roadmap to create roadmap.md.",
-      "Use $flow-spec for one selected milestone.",
-      "Use $flow-plan to create an executable plan.md.",
-      "Use $flow-code for TDD implementation and unit tests.",
-      "Use $flow-integration for cross-boundary verification."
+      "Use $dev-run to detect and continuously orchestrate the Flow v2 stages.",
+      "Use $dev-brainstorm inside requirement exploration.",
+      "Use $dev-requirement to produce requirement.md.",
+      "Use $dev-intent to confirm intent.md.",
+      "Use $dev-roadmap to create roadmap.md.",
+      "Use $dev-spec for one selected milestone.",
+      "Use $dev-plan to create an executable plan.md.",
+      "Use $dev-code for TDD implementation and unit tests.",
+      "Use $dev-integration for cross-boundary verification."
     ]
   }
 }

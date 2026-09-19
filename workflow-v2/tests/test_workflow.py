@@ -6,19 +6,39 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SKILLS = (
-    "flow-run",
-    "flow-brainstorm",
-    "flow-requirement",
-    "flow-intent",
-    "flow-roadmap",
-    "flow-spec",
-    "flow-plan",
-    "flow-code",
-    "flow-integration",
+    "dev-run",
+    "dev-brainstorm",
+    "dev-requirement",
+    "dev-intent",
+    "dev-roadmap",
+    "dev-spec",
+    "dev-plan",
+    "dev-code",
+    "dev-integration",
 )
 
 
 class WorkflowV2Tests(unittest.TestCase):
+    def test_dev_entry_names_do_not_change_controller_stage_ids(self):
+        contract = (ROOT / "flowctl-contract.md").read_text()
+        for suffix in (
+            "run", "brainstorm", "requirement", "intent", "roadmap",
+            "spec", "plan", "code", "integration",
+        ):
+            public = f"dev-{suffix}"
+            self.assertTrue((ROOT / "skills" / public / "SKILL.md").is_file())
+            self.assertFalse((ROOT / "skills" / f"flow-{suffix}").exists())
+        for suffix in ("requirement", "intent", "roadmap", "spec", "plan", "code", "integration"):
+            self.assertIn(f"| `$dev-{suffix}` | `flow-{suffix}` |", contract)
+        schema = json.loads((ROOT / "schemas" / "handoff.schema.json").read_text())
+        self.assertEqual(
+            [f"flow-{suffix}" for suffix in (
+                "requirement", "intent", "roadmap", "spec", "plan", "code", "integration",
+            )],
+            schema["properties"]["from_stage"]["enum"],
+        )
+        self.assertIn("caller: flow-run", (ROOT / "orchestration-contract.md").read_text())
+
     def skill(self, name):
         path = ROOT / "skills" / name / "SKILL.md"
         self.assertTrue(path.is_file(), f"missing {path.relative_to(ROOT)}")
@@ -39,7 +59,7 @@ class WorkflowV2Tests(unittest.TestCase):
             self.assertIn(f"${name}", "\n".join(manifest["interface"]["defaultPrompt"]))
 
     def test_flow_run_discovers_issue_then_artifacts_or_asks_for_paths(self):
-        text = self.skill("flow-run")
+        text = self.skill("dev-run")
         for value in (
             "human-provided issue ID",
             "must not infer",
@@ -89,7 +109,7 @@ class WorkflowV2Tests(unittest.TestCase):
             self.assertIn("worktree", text.lower(), name)
 
     def test_flow_run_uses_non_terminal_stage_return_protocol(self):
-        runner = self.skill("flow-run")
+        runner = self.skill("dev-run")
         for value in (
             "orchestration-contract.md",
             "FLOW_RUN_CONTEXT",
@@ -119,31 +139,31 @@ class WorkflowV2Tests(unittest.TestCase):
             self.assertIn(value, contract)
 
         for name in (
-            "flow-requirement", "flow-intent", "flow-roadmap", "flow-spec",
-            "flow-plan", "flow-code", "flow-integration",
+            "dev-requirement", "dev-intent", "dev-roadmap", "dev-spec",
+            "dev-plan", "dev-code", "dev-integration",
         ):
             stage = self.skill(name)
             self.assertIn("orchestration-contract.md", stage, name)
             self.assertIn("FLOW_RUN_CONTEXT", stage, name)
 
-        integration = self.skill("flow-integration")
+        integration = self.skill("dev-integration")
         self.assertIn("aggregate result is `FAILED`", integration)
         self.assertIn("FLOW_RUN_ROUTE_BACK", integration)
         self.assertIn("owner_stage", integration)
 
     def test_requirement_discussion_contract(self):
-        text = self.skill("flow-requirement")
+        text = self.skill("dev-requirement")
         for value in (
             "brainstorming", "human", "agent swarm", "conversation_context",
             "issue_context", "two independent roles", "three and at most twelve",
             "two or three", "requirement.md", "READY_FOR_INTENT",
-            "must not create intent.md", "$flow-intent",
+            "must not create intent.md", "$dev-intent",
         ):
             self.assertIn(value, text)
 
     def test_requirement_swarm_rejects_unjustified_platformization(self):
-        requirement = self.skill("flow-requirement")
-        brainstorm = self.skill("flow-brainstorm")
+        requirement = self.skill("dev-requirement")
+        brainstorm = self.skill("dev-brainstorm")
         for value in (
             "smallest scope that satisfies the current success boundary",
             "Scope Ledger",
@@ -164,8 +184,8 @@ class WorkflowV2Tests(unittest.TestCase):
         ):
             self.assertIn(value, brainstorm)
 
-        value_agent = (ROOT / "skills" / "flow-requirement" / "agents" / "flow-requirement-value.toml").read_text()
-        risk_agent = (ROOT / "skills" / "flow-requirement" / "agents" / "flow-requirement-risk.toml").read_text()
+        value_agent = (ROOT / "skills" / "dev-requirement" / "agents" / "dev-requirement-value.toml").read_text()
+        risk_agent = (ROOT / "skills" / "dev-requirement" / "agents" / "dev-requirement-risk.toml").read_text()
         for text in (value_agent, risk_agent):
             self.assertIn("PLATFORM_RECEIPT-*", text)
             self.assertIn("current NEED-*", text)
@@ -174,8 +194,8 @@ class WorkflowV2Tests(unittest.TestCase):
         self.assertIn("reject platformization", risk_agent)
 
     def test_requirement_risk_simulates_constraint_interactions_before_authorization(self):
-        requirement = self.skill("flow-requirement")
-        risk_agent = (ROOT / "skills" / "flow-requirement" / "agents" / "flow-requirement-risk.toml").read_text()
+        requirement = self.skill("dev-requirement")
+        risk_agent = (ROOT / "skills" / "dev-requirement" / "agents" / "dev-requirement-risk.toml").read_text()
         for value in (
             "Constraint Interaction",
             "all individual constraints are satisfied",
@@ -218,7 +238,7 @@ class WorkflowV2Tests(unittest.TestCase):
         ):
             self.assertIn(value, review)
 
-        for skill in ("flow-spec", "flow-plan", "flow-code"):
+        for skill in ("dev-spec", "dev-plan", "dev-code"):
             text = self.skill(skill)
             self.assertIn("finding-weight convergence", text)
             self.assertIn("non-blocking finding must not trigger another review cycle", text)
@@ -226,7 +246,7 @@ class WorkflowV2Tests(unittest.TestCase):
             self.assertIn("three review cycles", text)
 
     def test_brainstorm_adapter_contract(self):
-        text = self.skill("flow-brainstorm")
+        text = self.skill("dev-brainstorm")
         for value in (
             "one question at a time",
             "two or three",
@@ -237,58 +257,58 @@ class WorkflowV2Tests(unittest.TestCase):
             "status: DRAFT | CONFIRMED",
             "confirmed_by",
             "issue_context_ref",
-            "return control to `$flow-requirement`",
+            "return control to `$dev-requirement`",
             "must not write requirement.md",
             "must not create a Spec",
             "must not invoke `writing-plans`",
         ):
             self.assertIn(value, text)
 
-        requirement = self.skill("flow-requirement")
-        self.assertIn("**REQUIRED SUB-SKILL:** Use flow-brainstorm", requirement)
+        requirement = self.skill("dev-requirement")
+        self.assertIn("**REQUIRED SUB-SKILL:** Use dev-brainstorm", requirement)
         self.assertIn("BLOCKED_DEPENDENCY", requirement)
 
     def test_intent_confirmation_contract(self):
-        text = self.skill("flow-intent")
+        text = self.skill("dev-intent")
         for value in (
             "requirement.md", "grilling", "Decision Card",
             "one high-leverage question", "without another human confirmation",
             "intent-changing", "FLOW_RUN_ROUTE_BACK", "intent.md", "status: CONFIRMED",
             "ORCHESTRATED", "Requirement authorization",
-            "must not create roadmap", "$flow-roadmap",
+            "must not create roadmap", "$dev-roadmap",
         ):
             self.assertIn(value, text)
 
     def test_roadmap_contract(self):
-        text = self.skill("flow-roadmap")
+        text = self.skill("dev-roadmap")
         for value in (
             "requirement.md", "intent.md", "intent is authoritative",
             "milestones", "dependencies", "acceptance direction", "roadmap.md",
-            "must not include file-level tasks", "$flow-spec",
+            "must not include file-level tasks", "$dev-spec",
         ):
             self.assertIn(value, text)
 
     def test_spec_contract(self):
-        text = self.skill("flow-spec")
+        text = self.skill("dev-spec")
         for value in (
             "one selected milestone", "behavioral contract", "inputs and outputs",
             "state transitions", "errors", "permissions", "compatibility",
             "acceptance criteria", "spec.md", "must not include implementation tasks",
-            "$flow-plan",
+            "$dev-plan",
         ):
             self.assertIn(value, text)
 
     def test_plan_contract(self):
-        text = self.skill("flow-plan")
+        text = self.skill("dev-plan")
         for value in (
             "approved spec.md", "executable tasks", "files and modules",
             "test-first", "verification commands", "rollback", "traceability",
-            "flow_step `plan`", "$flow-code",
+            "flow_step `plan`", "$dev-code",
         ):
                 self.assertIn(value, text)
 
     def test_flow_initial_gate_is_production_replay_only(self):
-        runner = self.skill("flow-run")
+        runner = self.skill("dev-run")
         for value in ("开始前请确认测试范围", "允许使用生产数据进行本地测试（推荐）",
                       "不进行依赖生产数据的集成测试", "LOCAL_PRODUCTION_REPLAY",
                       "SKIP_PRODUCTION_REPLAY", "flowctl authorization decide", "flowctl authorization amend"):
@@ -299,7 +319,7 @@ class WorkflowV2Tests(unittest.TestCase):
         self.assertIn("no external-review authorization gate", runner)
 
     def test_external_review_surfaces_require_frozen_view_not_human_authorization(self):
-        for name in ("flow-spec", "flow-plan", "flow-code"):
+        for name in ("dev-spec", "dev-plan", "dev-code"):
             text = self.skill(name)
             for value in ("review-contract.md", "complete filtered frozen worktree", "stdout/API",
                           "no automatic commit", "no external-review authorization gate"):
@@ -319,7 +339,7 @@ class WorkflowV2Tests(unittest.TestCase):
         self.assertIn("scoped authorization ID/revision", artifact)
 
     def test_spec_plan_code_share_frozen_review_policy(self):
-        for name in ("flow-spec", "flow-plan", "flow-code"):
+        for name in ("dev-spec", "dev-plan", "dev-code"):
             text = self.skill(name)
             self.assertIn("review-contract.md", text)
             self.assertIn("single-use package binding", text)
@@ -328,8 +348,8 @@ class WorkflowV2Tests(unittest.TestCase):
             self.assertNotIn("same active `external_review` authorization ID", text)
 
     def test_replay_decision_reaches_integration_as_controller_binding(self):
-        plan = self.skill("flow-plan")
-        integration = self.skill("flow-integration")
+        plan = self.skill("dev-plan")
+        integration = self.skill("dev-integration")
         for value in (
             "production_replay",
             "LOCAL_PRODUCTION_REPLAY",
@@ -342,12 +362,12 @@ class WorkflowV2Tests(unittest.TestCase):
         self.assertIn("flowctl authorization amend", integration)
 
     def test_direct_review_has_no_human_gate_but_direct_replay_does(self):
-        for name in ("flow-spec", "flow-plan", "flow-code"):
+        for name in ("dev-spec", "dev-plan", "dev-code"):
             text = self.skill(name)
             self.assertIn("Direct invocation review scope", text)
             self.assertIn("no external-review authorization gate", text)
             self.assertNotIn("minimal stage-bound authorization gate for only `external_review`", text)
-        text = self.skill("flow-integration")
+        text = self.skill("dev-integration")
         for value in ("Direct invocation authorization", "minimal stage-bound authorization gate",
                       "production_replay", "controller-generated authorization ID"):
             self.assertIn(value, text)
@@ -362,18 +382,18 @@ class WorkflowV2Tests(unittest.TestCase):
         self.assertNotIn("If external review is denied", orchestration)
 
     def test_code_and_unit_test_contract(self):
-        text = self.skill("flow-code")
+        text = self.skill("dev-code")
         for value in (
             "approved plan.md", "TDD", "failing unit test", "minimal implementation",
             "refactor", "independent-review", "unit-test evidence",
-            "must not claim integration coverage", "$flow-integration",
+            "must not claim integration coverage", "$dev-integration",
         ):
             self.assertIn(value, text)
 
     def test_flow_code_uses_one_lazy_session_scoped_luna_coder(self):
-        text = self.skill("flow-code")
+        text = self.skill("dev-code")
         for value in (
-            "flow_coder",
+            "dev_coder",
             "gpt-5.6-luna",
             "max",
             "only after the Plan handoff passes admission",
@@ -398,16 +418,16 @@ class WorkflowV2Tests(unittest.TestCase):
             "CODER_THREAD_REPLACED",
             "must not implement the same task in parallel",
             "must not delegate",
-            "return to `$flow-plan`",
+            "return to `$dev-plan`",
             "close the coder thread",
         ):
             self.assertIn(value, text)
 
-        agent = ROOT / "skills" / "flow-code" / "agents" / "flow-coder.toml"
+        agent = ROOT / "skills" / "dev-code" / "agents" / "dev-coder.toml"
         self.assertTrue(agent.is_file())
         config = agent.read_text()
         for value in (
-            'name = "flow_coder"',
+            'name = "dev_coder"',
             'model = "gpt-5.6-luna"',
             'model_reasoning_effort = "max"',
             "Do not delegate",
@@ -418,7 +438,7 @@ class WorkflowV2Tests(unittest.TestCase):
             self.assertIn(value, config)
 
     def test_flow_run_controller_persists_coder_thread_state(self):
-        runner = self.skill("flow-run")
+        runner = self.skill("dev-run")
         for value in (
             "coder_agent",
             "coder_thread_id",
@@ -434,12 +454,12 @@ class WorkflowV2Tests(unittest.TestCase):
             self.assertIn(value, runner)
 
         readme = (ROOT / "README.md").read_text()
-        self.assertIn("flow-coder.toml", readme)
+        self.assertIn("dev-coder.toml", readme)
         self.assertIn("created lazily", readme)
 
     def test_flow_run_reports_observable_stage_transitions(self):
-        runner = self.skill("flow-run")
-        code = self.skill("flow-code")
+        runner = self.skill("dev-run")
+        code = self.skill("dev-code")
         for value in (
             "Observable status",
             "current stage",
@@ -461,7 +481,7 @@ class WorkflowV2Tests(unittest.TestCase):
             self.assertIn(value, code)
 
     def test_integration_contract(self):
-        text = self.skill("flow-integration")
+        text = self.skill("dev-integration")
         for value in (
             "available Plan", "current milestone", "snapshot",
             "cross-component", "end-to-end", "permissions", "failure recovery",
@@ -470,7 +490,7 @@ class WorkflowV2Tests(unittest.TestCase):
             self.assertIn(value, text)
 
     def test_integration_supports_direct_real_service_testing(self):
-        text = self.skill("flow-integration")
+        text = self.skill("dev-integration")
         for value in (
             "Governed mode", "Direct mode", "TESTCASE-*",
             "direct_test_charter", "explicit human confirmation",
@@ -481,7 +501,7 @@ class WorkflowV2Tests(unittest.TestCase):
             "wait for returned or persisted data",
             "Observability is evidence, not a substitute",
             "test-only code", "must not change business-logic semantics",
-            "production implementation", "safe cleanup",
+            "production implementation", "minimal runtime cleanup",
             "observed implementation or contract contradiction is `FAILED`",
             "insufficient evidence to distinguish them is `BLOCKED`",
             "every direct `TESTCASE-*`",
@@ -490,13 +510,13 @@ class WorkflowV2Tests(unittest.TestCase):
         self.assertNotIn("INT-*", text)
         self.assertNotIn("DIRECT-INT", text)
 
-        for name in ("flow-plan", "flow-code"):
+        for name in ("dev-plan", "dev-code"):
             stage = self.skill(name)
             self.assertIn("TESTCASE-*", stage)
             self.assertNotIn("INT-*", stage)
 
     def test_integration_starts_a_temporary_local_service_before_remote_fallback(self):
-        integration = self.skill("flow-integration")
+        integration = self.skill("dev-integration")
         for value in (
             "temporary local service",
             "current worktree",
@@ -513,12 +533,35 @@ class WorkflowV2Tests(unittest.TestCase):
         ):
             self.assertIn(value, integration)
 
-        plan = self.skill("flow-plan")
+        plan = self.skill("dev-plan")
         self.assertIn("temporary local service", plan)
         self.assertIn("remote test deployment is an explicit exception", plan)
 
+    def test_integration_preserves_real_test_environment_writes_and_only_cleans_runtime(self):
+        integration = self.skill("dev-integration")
+        contract = (ROOT / "flow-contract.md").read_text()
+        for value in (
+            "minimal cleanup boundary",
+            "stop processes or containers started by this run",
+            "must remain after the run",
+            "Do not delete, roll back, truncate, expire, or restore",
+            "MongoDB, SQL databases, Elasticsearch/OpenSearch, Redis",
+            "record their test-environment namespace and identifiers",
+        ):
+            self.assertIn(value, integration)
+        self.assertNotIn("clean its isolated data", integration)
+        for value in (
+            "Persistent business writes produced by real test requests are retained",
+            "must not delete or roll back those writes",
+        ):
+            self.assertIn(value, contract)
+        self.assertNotIn("clean up only data/resources created by this run", contract)
+        for stage_name in ("dev-run", "dev-plan"):
+            stage = self.skill(stage_name)
+            self.assertIn("retain real test-environment business writes", stage)
+
     def test_local_service_may_use_authorized_isolated_test_dependencies(self):
-        integration = self.skill("flow-integration")
+        integration = self.skill("dev-integration")
         for value in (
             "system under test",
             "supporting dependencies",
@@ -529,19 +572,19 @@ class WorkflowV2Tests(unittest.TestCase):
             "does not require local containers",
             "Docker or OrbStack",
             "must not by itself become `BLOCKED`",
-            "isolation and cleanup",
+            "isolation, retained test-data namespaces/identifiers",
             "local dependency process or container",
         ):
             self.assertIn(value, integration)
 
-        plan = self.skill("flow-plan")
+        plan = self.skill("dev-plan")
         self.assertIn("system under test", plan)
         self.assertIn("authorized isolated test-environment dependencies", plan)
         self.assertIn("must not require local containers by default", plan)
 
     def test_required_dependencies_and_worktree_gate_fail_closed(self):
-        requirement = self.skill("flow-requirement")
-        code = self.skill("flow-code")
+        requirement = self.skill("dev-requirement")
+        code = self.skill("dev-code")
         contract = (ROOT / "flow-contract.md").read_text()
         self.assertIn("BLOCKED_DEPENDENCY", requirement)
         self.assertIn("BLOCKED_DEPENDENCY", code)
@@ -578,13 +621,13 @@ class WorkflowV2Tests(unittest.TestCase):
             self.assertIn(value, contract)
 
         stages = {
-            "flow-requirement": "requirement",
-            "flow-intent": "intent",
-            "flow-roadmap": "roadmap",
-            "flow-spec": "spec",
-            "flow-plan": "plan",
-            "flow-code": "code",
-            "flow-integration": "integration",
+            "dev-requirement": "requirement",
+            "dev-intent": "intent",
+            "dev-roadmap": "roadmap",
+            "dev-spec": "spec",
+            "dev-plan": "plan",
+            "dev-code": "code",
+            "dev-integration": "integration",
         }
         for name, step in stages.items():
             text = self.skill(name)
@@ -593,8 +636,8 @@ class WorkflowV2Tests(unittest.TestCase):
         all_text = "\n".join(self.skill(name) for name in stages)
         for obsolete in (".ai/requirements/", ".ai/intents/", ".ai/roadmaps/", ".ai/specs/", ".ai/plans/", ".ai/evidence/"):
             self.assertNotIn(obsolete, all_text)
-        plan = self.skill("flow-plan")
-        integration = self.skill("flow-integration")
+        plan = self.skill("dev-plan")
+        integration = self.skill("dev-integration")
         self.assertIn("exactly one canonical absolute output directory", plan)
         self.assertIn("glob/regex patterns are not allowed", plan)
         self.assertIn("current-stage instructions", integration)
@@ -603,7 +646,7 @@ class WorkflowV2Tests(unittest.TestCase):
         self.assertIn("reject `..` or symlink traversal", integration)
 
     def test_intent_uses_pre_admitted_worktree_and_orchestrated_approval(self):
-        text = self.skill("flow-intent")
+        text = self.skill("dev-intent")
         for value in (
             "Verify the admitted worktree",
             "Never create or migrate a worktree in this stage",
