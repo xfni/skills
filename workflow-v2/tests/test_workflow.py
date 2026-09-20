@@ -19,6 +19,21 @@ SKILLS = (
 
 
 class WorkflowV2Tests(unittest.TestCase):
+    def test_dev_run_defines_bounded_stop_hook_as_fallback_not_conductor(self):
+        runner = self.skill("dev-run")
+        contract = (ROOT / "flowctl-contract.md").read_text()
+        readme = (ROOT / "README.md").read_text()
+        for value in (
+            "continuation inspect", "continuation_hook.py activate",
+            "continuation_hook.py deactivate", "same turn",
+            "Stop Hook is a fallback", "Runtime Goal remains the long-term business outcome",
+            "owner conflict", "--replace-owner", "must not become business BLOCKED",
+        ):
+            self.assertIn(value, runner)
+        self.assertIn("read-only continuation observation", contract)
+        self.assertIn("install_codex_hooks.py", readme)
+        self.assertIn("/hooks", readme)
+
     def test_dev_entry_names_do_not_change_controller_stage_ids(self):
         contract = (ROOT / "flowctl-contract.md").read_text()
         for suffix in (
