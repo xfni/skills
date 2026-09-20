@@ -2,7 +2,10 @@
 
 The public development skills are now `dev-*`. Start with `$dev-run`; old `flow-*` skill aliases are not installed. The package directory, `flowctl` executable, internal `flow-*` stage IDs and existing controller/artifact formats remain unchanged. See the [skill-to-stage mapping](flowctl-contract.md#public-skills-and-stable-controller-stages) before constructing CLI or handoff inputs. Resume existing issues with `$dev-run` without rewriting their state or restarting a healthy coder thread.
 
-An explicit-only, self-contained workflow with one continuous orchestrator and eight bounded stages. Flow itself owns issue admission, worktree isolation, artifact bindings, and orchestration; it remains complete without `AGENTS.md`.
+An explicit-only, self-contained workflow with one continuous orchestrator,
+eight bounded stages, and one lazy quality coordinator. Flow itself owns issue
+admission, worktree isolation, artifact bindings, and orchestration; it remains
+complete without `AGENTS.md`.
 
 ```text
 $dev-run          -> choose an initial entry / resume recorded position and orchestrate the flow
@@ -13,6 +16,7 @@ $dev-roadmap      -> roadmap.md
 $dev-spec         -> spec.md for one milestone
 $dev-plan         -> plan.md
 $dev-code         -> code + unit-test evidence
+$dev-qc           -> coordinate independent quality checks (not a review receipt)
 $dev-integration  -> integration evidence
 ```
 
@@ -30,6 +34,7 @@ Agent leads the workflow; flowctl checks and records only deterministic facts fo
 | `dev-spec` | Observable behavioral rules for that milestone | Standard GPT + external; permitted single independent chain with a gap. |
 | `dev-plan` | File-level executable tasks and verification contract | Standard GPT + external; permitted single independent chain with a gap. |
 | `dev-code` | TDD implementation and unit/regression evidence | No integration claim; blocking findings stop completion. |
+| `dev-qc` | Run-scoped coordination of clean-room GPT and bound external reviews | No independent PASS; Root retains repair, snapshot and handoff ownership. |
 | `dev-integration` | Cross-component and end-to-end validation | Missing environment or authority is reported as blocked. |
 
 ## Review and replay lifecycle
@@ -60,15 +65,22 @@ Explicit `$dev-run` invocation requests creation/reuse of a matching runtime Goa
 
 For a real Goal/task conflict, Flow explains the old/new tasks and asks for direction once; an explicit replacement instruction already supplies it. Automatic replacement requires an actually available host-permitted capability. Otherwise the same message supplies `/goal clear` for the current conversation, followed by continuation of the chosen task; Flow verifies an empty Goal before creating the new one. Timeout/error requires readback, not blind clearing. Old work stays unfinished and preserved, scope/permissions are not inherited, and replacement does not waive budgets or host restrictions. Same-task recovery does not normally require clearing.
 
-Install the nine directories under `skills/` into `~/.codex/skills/`. Also copy `flowctl.py`, `flowctl_lib/`, and `schemas/` together to `~/.codex/flow-v2/`; skills resolve that packaged executable when they are not running from this repository. Invoke `$dev-run` for continuous orchestration or an individual stage for direct control. `dev-requirement` requires `dev-brainstorm` and also needs its two custom Agent TOMLs copied from `skills/dev-requirement/agents/` into `~/.codex/agents/`:
+Install the ten directories under `skills/` into `~/.codex/skills/`. Also copy `flowctl.py`, `flowctl_lib/`, and `schemas/` together to `~/.codex/flow-v2/`; skills resolve that packaged executable when they are not running from this repository. Invoke `$dev-run` for continuous orchestration or an individual stage for direct control. `dev-requirement` requires `dev-brainstorm` and also needs its two custom Agent TOMLs copied from `skills/dev-requirement/agents/` into `~/.codex/agents/`:
 
 ```text
 dev-requirement-value.toml
 dev-requirement-risk.toml
 dev-coder.toml
+dev-qc.toml
 ```
 
 Copy `skills/dev-code/agents/dev-coder.toml` to `~/.codex/agents/dev-coder.toml`. The coder is created lazily only after an approved Plan reaches `dev-code`, then the same session-scoped thread is reused for sequential `TASK-*` work; it is not started when a Codex session opens.
+
+Copy `skills/dev-qc/agents/dev-qc.toml` to
+`~/.codex/agents/dev-qc.toml`. QC is also lazy and run-scoped: installation or
+Codex startup does not create a thread. The first actual quality checkpoint
+creates it, later checkpoints reuse it, and its Luna coordination never counts
+as an independent review receipt.
 
 Copy the shared `*-contract.md` files to `~/.codex/flow-v2/` as well. In the separately installed skill entry copies, rewrite `../../<contract>.md` to `../../flow-v2/<contract>.md`; keep repository and packaged `flow-v2/skills/` copies unchanged. Move previous `flow-*` skill directories and the three old role TOMLs outside Codex's discoverable skill/agent directories after validating the new installation. Update any global workflow routing trigger from `$flow-run` to `$dev-run`, preserving stricter safety rules and unrelated instructions.
 

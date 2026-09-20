@@ -2,6 +2,16 @@
 
 Read this contract before Spec, Plan or Code external review. It supersedes legacy byte-only review and external_review authorization prompts.
 
+## Coordinator and reviewer boundary
+
+A QC coordinator produces no independent assurance. It may organize packets,
+preserve finding provenance, call bound runners, and suggest repair/routing,
+but it is not a review lane. A clean-room Specialist Reviewer receives the
+current frozen object and raw evidence without inherited coordinator history,
+uses `independent-review`, is read-only, and cannot delegate. Only that
+Specialist's valid terminal report or a bound external runner receipt can
+satisfy the applicable lane. QC, Root, tests, and summaries cannot.
+
 ## Authority and review scope
 
 Explicit Flow or Cursor review invocation permits review of the current admitted worktree; no separate human external-review gate exists. All iBrain models are organization-approved private deployments or confidentiality-bound trusted vendors and require no human authorization, independently of Cursor decisions. Historical external_review records are retained only for audit. Applicable stricter host/network restrictions still apply.

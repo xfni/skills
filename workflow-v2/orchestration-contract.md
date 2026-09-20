@@ -115,6 +115,15 @@ Stage-local wording such as "stop" means return control to the orchestrator when
 
 `dev-code` alone owns the coder lifecycle. It creates `dev_coder` lazily after Plan admission and dispatches one `TASK-*` at a time to the same session-scoped thread. Coder lifecycle events must be recorded through a flowctl mutation command when that command is available; neither `$dev-run` nor a stage may directly edit controller JSON. Wait timeouts never authorize replacement. Any replacement requires confirmed thread unavailability or a stopped scope/safety violation and a durable `CODER_THREAD_REPLACED` event.
 
+The root also owns the run-scoped QC lifecycle. It creates `dev_qc` lazily at
+the first actual quality checkpoint, binds it to the admitted run/worktree, and
+reuses it while that binding remains valid. Root sends `QCRequest`, processes
+`QCCheckpoint`, and owns all human-facing progress. Root owns repair dispatch, snapshot, and handoff. QC coordination and its Ledger are runtime hints, not
+controller state or progression gates. Timeout alone does not justify
+replacement; confirmed loss is recovered from real receipts, raw reports and
+unresolved findings. If QC is unavailable, fallback to Root coordination under the same contracts and must not fabricate assurance. Flow completion,
+abandonment, or invalid binding closes the QC thread.
+
 Read and enforce [the frozen worktree review contract](review-contract.md). Review the complete filtered frozen worktree with independent exploration; the root brief is not sole evidence. iBrain is organization-trusted; no external-review authorization gate. Reviewer returns stdout/API only and never writes worktree. Freeze by digest (no automatic commit); source/private snapshot verification and single-use package binding are controller-owned.
 
 Standard review is one independent GPT chain plus one external chain. Cursor/iBrain use separate single-use bindings; explicit iBrain selection needs no Cursor attempt. Genuine unavailability or a human route restriction permits one effective independent chain, with a missing-lane EXTERNAL_REVIEW_GAP and 有条件通过. There is no failure quota or mandatory third Astra consistency. Findings survive revisions and channel changes, requiring original or takeover independent verification. Follow review-contract.md; host restrictions and independent production-replay permissions remain authoritative.
