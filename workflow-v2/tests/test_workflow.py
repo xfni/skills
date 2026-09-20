@@ -14,6 +14,7 @@ SKILLS = (
     "dev-spec",
     "dev-plan",
     "dev-code",
+    "dev-qc",
     "dev-integration",
 )
 
@@ -58,6 +59,77 @@ class WorkflowV2Tests(unittest.TestCase):
         path = ROOT / "skills" / name / "SKILL.md"
         self.assertTrue(path.is_file(), f"missing {path.relative_to(ROOT)}")
         return path.read_text()
+
+    def test_dev_qc_contract(self):
+        qc = self.skill("dev-qc")
+        agent = (ROOT / "skills/dev-qc/agents/dev-qc.toml").read_text()
+        code = self.skill("dev-code")
+        runner = self.skill("dev-run")
+        orchestration = (ROOT / "orchestration-contract.md").read_text()
+        review = (ROOT / "review-contract.md").read_text()
+        contract = (ROOT / "qc-contract.md").read_text()
+
+        for value in (
+            'fork_turns="none"',
+            "coordination is not independent assurance",
+            "one GPT lane",
+            "one external lane",
+            "QCRequest",
+            "QCCheckpoint",
+            "Scope Delta",
+        ):
+            self.assertIn(value, qc)
+        for value in (
+            'model = "gpt-5.6-luna"',
+            'model_reasoning_effort = "high"',
+            "must not edit the worktree or controller",
+            "must not accept a handoff",
+            "must not recursively delegate",
+            "Luna self-review is not a receipt",
+        ):
+            self.assertIn(value, agent)
+
+        for text in (code, runner, orchestration):
+            self.assertIn("run-scoped", text)
+            self.assertIn("QCCheckpoint", text)
+            self.assertIn("Root owns repair dispatch, snapshot, and handoff", text)
+            self.assertIn("fallback to Root coordination", text)
+            self.assertIn("must not fabricate assurance", text)
+        self.assertIn("lazy", runner)
+        self.assertIn("clean-room Specialist", review)
+        self.assertIn("coordinator produces no independent assurance", review)
+
+        for text in (code, runner):
+            self.assertIn("../../qc-contract.md", text)
+            self.assertIn("$dev-qc", text)
+        self.assertIn("$dev-qc", agent)
+        self.assertIn("qc-contract.md", agent)
+
+        for field in (
+            "request_id", "run_ref", "stage", "current_object_ref",
+            "authorized_boundary_ref", "quality_contract_refs",
+            "changed_boundary", "evidence_refs", "carryover_refs",
+            "route_constraints", "request_ref", "checked_object_ref",
+            "receipt_or_evidence_refs", "open_question_refs",
+            "repair_proposals", "route_back_proposals", "missing_assurance",
+            "ledger_delta", "suggested_next_action",
+        ):
+            self.assertIn(f"{field}:", contract)
+        for value in (
+            "handoff_candidate", "not a receipt", "not a second controller",
+            "<controller-dir>/reviews/qc-ledger.yaml", "source_ref",
+            "carry_to", "resolution_ref",
+        ):
+            self.assertIn(value, contract)
+
+        scenarios = json.loads((ROOT / "tests/fixtures/qc_scenarios.json").read_text())
+        self.assertEqual(10, len(scenarios))
+        for scenario in scenarios:
+            self.assertIn(scenario["name"], contract)
+            self.assertIn(scenario["expected_action"], contract)
+
+        manifest = json.loads((ROOT / ".codex-plugin" / "plugin.json").read_text())
+        self.assertIn("$dev-qc", "\n".join(manifest["interface"]["defaultPrompt"]))
 
     def test_all_skills_are_explicit_only(self):
         for name in SKILLS:

@@ -1,0 +1,12 @@
+[
+  {"name": "normal dual lane", "expected_action": "preserve one GPT and one external receipt, then propose handoff"},
+  {"name": "GPT finding", "expected_action": "propose bounded repair and re-review by the same reviewer"},
+  {"name": "reviewer takeover", "expected_action": "carry every unresolved original finding explicitly"},
+  {"name": "explicit iBrain route", "expected_action": "use iBrain directly without manufactured Cursor failures"},
+  {"name": "permitted single lane", "expected_action": "retain one real PASS and record the durable lane gap"},
+  {"name": "zero assurance", "expected_action": "do not propose handoff"},
+  {"name": "snapshot drift", "expected_action": "require a fresh binding; do not rebind the old report"},
+  {"name": "QC recovery", "expected_action": "rebuild coordination from receipts/findings without rerunning valid reviews"},
+  {"name": "Ledger loss", "expected_action": "reconstruct the index; do not block the business flow"},
+  {"name": "unsupported platformization", "expected_action": "record non-blocking advice or Scope Delta"}
+]

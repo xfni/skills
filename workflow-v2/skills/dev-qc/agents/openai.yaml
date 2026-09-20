@@ -1,0 +1,6 @@
+interface:
+  display_name: "Dev QC"
+  short_description: "Coordinate independent checks for one Flow run"
+  default_prompt: "Use $dev-qc with this QCRequest to coordinate the required independent checks."
+policy:
+  allow_implicit_invocation: false

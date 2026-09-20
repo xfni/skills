@@ -17,6 +17,25 @@ Read and enforce `../../flowctl-contract.md`. Register the DRAFT candidate, reco
 
 Read and follow `../../artifact-contract.md`. Require an issue ID before feature work. Explicit `$dev-run` invocation requests a durable runtime Goal for this Flow's human-stated scope; no separate `/goal` request is needed. Apply the runtime recipe below after issue admission, before dispatching a child stage. Goal persistence never authorizes a Flow transition.
 
+## Run-scoped QC lifecycle
+
+Read and enforce `../../qc-contract.md`. Every coordinator dispatch explicitly
+invokes `$dev-qc` with a fresh `QCRequest`; merely starting the custom Agent
+does not load the explicit-only Skill contract.
+
+The QC lifecycle is lazy and run-scoped. Do not create `dev_qc` at session startup. Create it lazily when a stage first
+reaches an actual coordinated quality checkpoint, bind it to this run and
+canonical worktree, and reuse it across later checkpoints. Root supplies a
+fresh `QCRequest`, consumes the returned `QCCheckpoint`, writes any permitted
+Ledger delta, and keeps all human-facing progress reporting. Root owns repair dispatch, snapshot, and handoff.
+
+Waiting timeouts are progress checks, not replacement evidence. If the QC
+thread is confirmed lost, reconstruct coordination from controller receipts,
+raw reports, unresolved findings, and the reconstructible Ledger; do not rerun
+valid reviews solely because the coordinator changed. If QC is unavailable, fallback to Root coordination under `qc-contract.md` and must not fabricate assurance. Close the bound QC only when Flow completes, is explicitly
+abandoned, or its run/worktree binding becomes invalid. This lifecycle is
+run-scoped runtime coordination, not a new progression gate.
+
 ## Bounded Stop Hook fallback
 
 The root Agent remains the conductor. Accept every valid stage handoff and start the next safe action in the same turn; **Stop Hook is a fallback**, never the normal stage driver. Runtime Goal remains the long-term business outcome and must not be rewritten into a list of stage transitions.

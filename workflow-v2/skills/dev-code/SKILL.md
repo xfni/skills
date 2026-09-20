@@ -33,6 +33,28 @@ Implement one approved plan.md with TDD and produce reviewable code plus unit-te
 
 **REQUIRED SUBAGENT:** Use the bundled `agents/dev-coder.toml` identity `dev_coder` (`gpt-5.6-luna`, reasoning effort `max`) as the sole implementation writer. It must not delegate.
 
+### QC coordination boundary
+
+Read and enforce `../../qc-contract.md`. When dispatching the coordinator,
+explicitly invoke `$dev-qc` with the current `QCRequest`; the explicit-only
+Skill is the coordinator's complete operating contract, not optional context.
+
+After Root validates the milestone and freezes the current object, submit a
+fresh `QCRequest` to the run-scoped `dev_qc`. QC coordinates the clean-room GPT
+Specialist and the existing external runner and returns a `QCCheckpoint`; its
+Luna summary is not a receipt. Root owns repair dispatch, snapshot, and handoff.
+Root validates each repair proposal and sends accepted Code corrections to the
+same coder, then freezes the new object for original-reviewer or explicit
+takeover review. QC never edits or commands the coder and never accepts the
+handoff.
+
+Create QC lazily at the first real quality checkpoint and reuse it for this
+run/worktree. Silence or a wait timeout is not replacement evidence. Confirmed
+QC loss permits reconstruction from controller receipts, unresolved findings,
+and the Ledger. If QC cannot be used, fallback to Root coordination under the
+same contract and must not fabricate assurance. These runtime rules do not add
+a controller gate or change the existing review commands and lane policy.
+
 For a previously bound live coder thread, a historical `flow_coder` role label alone is not an identity/model mismatch and does not justify replacement. Verify its existing issue/worktree/Plan binding and Luna/max configuration, then reuse the thread under the normal lifecycle rules. Only new threads use `dev_coder`; do not rewrite historical thread IDs or events.
 
 ## Admission

@@ -24,6 +24,7 @@
       "Use $dev-spec for one selected milestone.",
       "Use $dev-plan to create an executable plan.md.",
       "Use $dev-code for TDD implementation and unit tests.",
+      "Use $dev-qc with a QCRequest to coordinate independent Flow checks.",
       "Use $dev-integration for cross-boundary verification."
     ]
   }

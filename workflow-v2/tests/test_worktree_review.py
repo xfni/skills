@@ -104,6 +104,23 @@ class WorktreeReviewTests(unittest.TestCase):
         with self.assertRaisesRegex(FlowctlError, 'REVIEW_WORKTREE_MUTATED'):
             self.module.verify_review_snapshot(self.root, self.controller, before)
 
+    def test_qc_ledger_is_bookkeeping_but_source_mutation_is_detected(self):
+        before = self.module.capture_review_snapshot(self.root, self.controller)
+        ledger = self.controller.parent / 'reviews/qc-ledger.yaml'
+        ledger.parent.mkdir()
+        for content in ('revision: 1\n', 'revision: 2\n'):
+            ledger.write_text(content)
+            actual = self.module.verify_review_snapshot(self.root, self.controller, before)
+            self.assertEqual(before['snapshot_digest'], actual['snapshot_digest'])
+        ledger.unlink()
+        actual = self.module.verify_review_snapshot(self.root, self.controller, before)
+        self.assertEqual(before['snapshot_digest'], actual['snapshot_digest'])
+
+        (self.root / 'app.py').write_text('answer = 43\n')
+        with self.assertRaises(FlowctlError) as raised:
+            self.module.verify_review_snapshot(self.root, self.controller, before)
+        self.assertEqual('REVIEW_WORKTREE_MUTATED', raised.exception.code)
+
     def test_index_and_file_mode_changes_are_detected(self):
         before = self.module.capture_review_snapshot(self.root, self.controller)
         (self.root / 'app.py').chmod(0o755)
