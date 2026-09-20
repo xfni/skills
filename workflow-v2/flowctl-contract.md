@@ -30,6 +30,8 @@ Use four status values and three nullable results from orchestration-contract.md
 
 Resolve the executable from explicit FLOWCTL, this package's flowctl.py, then ~/.codex/flow-v2/flowctl.py. Commands return JSON. Reload actual state_revision before mutations and pass --expected-revision; on STATE_CONFLICT reload, do not overwrite or blindly repeat execution. Existing file locks, transaction recovery, atomic replacement and linked events remain.
 
+`flowctl continuation inspect --state <controller>` is a read-only continuation observation for the optional dev-run Stop Hook. It reads controller bytes directly without transaction recovery, migration, locks or writes and returns only `CONTINUE` or `ALLOW_STOP`, a bounded reason code and a stable progress fingerprint. It does not authorize work, accept a handoff, validate semantic correctness or mutate pending_action. Unknown, malformed, waiting, blocked and complete facts allow Stop.
+
 At entry use status. New controllers may use init --stage flow-code --milestone MILESTONE-1 (default flow-requirement). This records an Agent-chosen entry, not fictitious Spec/Plan approval or execution. Existing init is idempotent and cannot relocate or clear a pause. Apply flow-contract.md worktree/issue admission first.
 
 resume restores the recorded execution position and actual accepted handoffs, not the deepest directory candidate. Registered readable paths take precedence over unrelated historical files. First admission, explicit --inputs or missing-path repair may discover documents; Agent selects an initial stage and discloses missing history. Never reconstruct unrelated earlier stages merely to repair metadata.

@@ -17,6 +17,16 @@ Read and enforce `../../flowctl-contract.md`. Register the DRAFT candidate, reco
 
 Read and follow `../../artifact-contract.md`. Require an issue ID before feature work. Explicit `$dev-run` invocation requests a durable runtime Goal for this Flow's human-stated scope; no separate `/goal` request is needed. Apply the runtime recipe below after issue admission, before dispatching a child stage. Goal persistence never authorizes a Flow transition.
 
+## Bounded Stop Hook fallback
+
+The root Agent remains the conductor. Accept every valid stage handoff and start the next safe action in the same turn; **Stop Hook is a fallback**, never the normal stage driver. Runtime Goal remains the long-term business outcome and must not be rewritten into a list of stage transitions.
+
+After admission, Goal readback and authorization preflight, resolve `continuation_hook.py` adjacent to the same installed package as the selected `flowctl.py`. Run `flowctl continuation inspect --state <controller>` for read-only diagnosis, then run `continuation_hook.py activate --state <controller> --session-id <verified-root-session>` before the autonomous stage loop. Activation must bind the current UserPromptSubmit marker and same turn; retain its returned generation. A missing/untrusted Hook, marker, helper or failed activation gets one readable degradation note and **must not become business BLOCKED**. Continue all safe same-turn work.
+
+On a Hook nudge, re-read controller status/resume and continue the existing worker/action; never infer success from the nudge text. Do not create a replacement coder because Stop fired. Before a human gate, real blocker, explicit stop, Goal pause/budget limit or Flow completion, call `continuation_hook.py deactivate` with the matching session/generation and reason. Cleanup failure is a runtime defect, not a new approval gate.
+
+An owner conflict is diagnostic. Show the old/new session and controller. Only an explicit human takeover decision permits `--replace-owner --reason <decision>`; never use time-to-live takeover. Replacement preserves Flow facts and permissions. The helper is root-session only: do not attach it to SubagentStop or use it to supervise coder/reviewer waits.
+
 ## Runtime Goal
 
 1. Inspect the actual runtime with `get_goal`. Build a concise objective from the human-supplied issue and task: complete the stated Flow scope through required integration evidence, resolving requirement choices with the human where necessary. Do not invent product requirements or scope; before Requirement is settled the objective describes completing the workflow, not a chosen implementation. Omit `token_budget` unless the human explicitly requested one.

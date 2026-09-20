@@ -17,6 +17,7 @@ from .snapshot import record_snapshot
 from .signals import record_signal
 from .state import audit_state, initialize_state, read_consistent_state, record_runtime_goal, register_artifact, update_coder_state, validate_admission
 from .stage_summary import stage_summary
+from .continuation import inspect_continuation
 
 
 def _parser():
@@ -34,6 +35,11 @@ def _parser():
 
     status = commands.add_parser("status")
     status.add_argument("--state", required=True)
+
+    continuation = commands.add_parser("continuation")
+    continuation_commands = continuation.add_subparsers(dest="continuation_command", required=True)
+    continuation_inspect = continuation_commands.add_parser("inspect")
+    continuation_inspect.add_argument("--state", required=True)
 
     audit = commands.add_parser("audit", help="Optional strict historical integrity audit")
     audit.add_argument("--state", required=True)
@@ -221,6 +227,8 @@ def _authorization_result(state, kind):
 
 
 def dispatch(args):
+    if args.command == "continuation" and args.continuation_command == "inspect":
+        return inspect_continuation(args.state)
     if args.command == 'review' and args.review_command == 'degrade':
         _validate_command_admission(args.state)
         return {'ok': True, 'state': degrade_review(args.state, args.lane, args.basis, args.reason, args.expected_revision)}
