@@ -13,9 +13,10 @@ using `--last`.
   the helper; never select a session by recency or a subagent thread.
 - Read that conversation's `session_id`, original `cwd`, explicit historical
   `--add-dir` arguments, and existing absolute `workdir` values.
-- Print a shell block that first changes into the primary workspace, then
-  invokes `codex resume <session-id>` with one quoted `--add-dir` line per
-  recovered additional directory.
+- Print a shell block that first remains in the original primary workspace,
+  then invokes `codex resume <session-id>` with `-C` selecting the resumed
+  current workspace and quoted `--add-dir` lines preserving the other selected
+  directories.
 - Keep the skill explicit-only, for manual invocation as `$resume`.
 
 ## Non-goals
@@ -42,12 +43,19 @@ calls, agent/user messages, outputs, and all other record types. Keep only
 existing absolute directories, de-duplicate them, and exclude the primary
 `cwd`.
 
+With no additional candidate, `-C` selects the original workspace. With one
+candidate, that worktree becomes current automatically and the original
+workspace is retained through `--add-dir`. With multiple candidates, the human
+must select both the loaded set and one current directory; the helper never
+chooses by recency.
+
 The output is intentionally a multi-line block:
 
 ```sh
 cd -- "/primary/workspace"
 codex resume "session-id" \
-  --add-dir "/additional/workspace"
+  -C "/feature/worktree" \
+  --add-dir "/primary/workspace"
 ```
 
 Render double-quoted shell arguments by escaping backslash, double quote,
@@ -56,16 +64,18 @@ containing a newline rather than render an ambiguous block. With zero added
 directories, omit the continuation and all `--add-dir` lines; with one or more,
 use one continuation backslash after every non-final resume argument line.
 
-When the helper cannot identify exactly one suitable primary session or a
-safe primary directory, exit non-zero with the candidate paths and a reason.
-Do not guess or print an unsafe resume command.
+When the helper cannot identify exactly one suitable primary session, a safe
+primary directory, or one current directory among multiple selections, exit
+non-zero with the candidate paths and a reason. Do not guess or print an unsafe
+resume command.
 
 ## Verification
 
 - Unit-test `CODEX_THREAD_ID` selection, absent/duplicate/mismatched metadata,
   subagent exclusion, accepted nested `exec` input shapes, dynamic and prose
   exclusion, directory de-duplication and filtering, zero/one/multiple output,
-  shell metacharacter escaping, and the forbidden `--last` invariant against
-  temporary JSONL fixtures.
+  explicit current-directory selection, preservation of the original
+  workspace, shell metacharacter escaping, and the forbidden `--last`
+  invariant against temporary JSONL fixtures.
 - Run the skill validator and execute the helper against the current local
   session store without starting Codex.

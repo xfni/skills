@@ -311,15 +311,44 @@ def _quote_argument(value: str) -> str:
     return f'"{value}"'
 
 
-def render_command(primary_cwd: Path, session_id: str, added_dirs: list[Path]) -> str:
+def render_command(
+    primary_cwd: Path,
+    session_id: str,
+    selected_dirs: list[Path],
+    current_cwd: Path,
+) -> str:
     """Render a copyable command without executing it."""
-    if _existing_directory(str(primary_cwd)) is None:
+    primary = _existing_directory(str(primary_cwd))
+    if primary is None:
         raise ResumeError(f"primary cwd must be an existing absolute directory: {str(primary_cwd)!r}")
+    current = _existing_directory(str(current_cwd))
+    if current is None:
+        raise ResumeError(f"current cwd must be an existing absolute directory: {str(current_cwd)!r}")
+    validated_selected = []
+    selected_canonical = set()
+    for path in selected_dirs:
+        directory = _existing_directory(str(path))
+        if directory is None:
+            raise ResumeError(f"selected directory must be an existing absolute directory: {str(path)!r}")
+        validated_selected.append(directory[0])
+        selected_canonical.add(directory[1])
+    if current[1] != primary[1] and current[1] not in selected_canonical:
+        raise ResumeError("current cwd must be the primary cwd or one selected directory")
     if not session_id or session_id.startswith("-"):
         raise ResumeError("session_id must be nonempty and must not be an option")
     cd_line = f"cd -- {_quote_argument(str(primary_cwd))}"
-    resume_lines = [f"codex resume {_quote_argument(session_id)}"]
-    resume_lines.extend(f"  --add-dir {_quote_argument(str(path))}" for path in added_dirs)
+    resume_lines = [
+        f"codex resume {_quote_argument(session_id)}",
+        f"  -C {_quote_argument(str(current[0]))}",
+    ]
+    accessible_dirs = [primary[0], *validated_selected]
+    seen = {current[1]}
+    for path in accessible_dirs:
+        canonical = path.resolve()
+        if canonical in seen:
+            continue
+        seen.add(canonical)
+        resume_lines.append(f"  --add-dir {_quote_argument(str(path))}")
     return cd_line + "\n" + " \\\n".join(resume_lines)
 
 
@@ -333,10 +362,18 @@ def _selection(value: str, count: int) -> list[int]:
     return list(dict.fromkeys(number - 1 for number in selected))
 
 
+def _current_selection(value: str, count: int) -> int:
+    selected = _selection(value, count)
+    if len(selected) != 1:
+        raise ResumeError("current directory selection must contain exactly one number")
+    return selected[0]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--list-candidates", action="store_true")
     parser.add_argument("--include")
+    parser.add_argument("--current")
     arguments = parser.parse_args([] if argv is None else argv)
     try:
         thread_id = os.environ.get("CODEX_THREAD_ID")
@@ -356,16 +393,37 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"{index}. [历史工作目录] {candidate}")
             return 0
         if arguments.include is not None:
-            candidates = [candidates[index] for index in _selection(arguments.include, len(candidates))]
+            selected_indexes = _selection(arguments.include, len(candidates))
+            if arguments.current is None:
+                if len(selected_indexes) != 1:
+                    raise ResumeError(
+                        "multiple selected directories found; rerun with --current N"
+                    )
+                current_index = selected_indexes[0]
+            else:
+                current_index = _current_selection(arguments.current, len(candidates))
+                if current_index not in selected_indexes:
+                    raise ResumeError("--current must name one directory selected by --include")
+            selected_dirs = [candidates[index] for index in selected_indexes]
+            current_cwd = candidates[current_index]
+        elif arguments.current is not None:
+            raise ResumeError("--current requires --include")
         elif len(candidates) > 1:
             raise ResumeError(
                 "multiple directory candidates found; run with --list-candidates, "
-                "then rerun with --include 1,3"
+                "then rerun with --include 1,3 --current 3"
             )
+        elif len(candidates) == 1:
+            selected_dirs = candidates
+            current_cwd = candidates[0]
+        else:
+            selected_dirs = []
+            current_cwd = primary_cwd
         command = render_command(
             primary_cwd,
             payload["session_id"],
-            candidates,
+            selected_dirs,
+            current_cwd,
         )
     except ResumeError as error:
         print(str(error), file=sys.stderr)

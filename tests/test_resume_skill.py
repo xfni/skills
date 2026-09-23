@@ -363,13 +363,13 @@ class ResumeCommandTests(unittest.TestCase):
         second = self.root / "second"
         first.mkdir()
         second.mkdir()
-        for directories, expected in (
-            ([], f'cd -- "{self.root}"\ncodex resume "session-1"'),
-            ([first], f'cd -- "{self.root}"\ncodex resume "session-1" \\\n  --add-dir "{first}"'),
-            ([first, second], f'cd -- "{self.root}"\ncodex resume "session-1" \\\n  --add-dir "{first}" \\\n  --add-dir "{second}"'),
+        for directories, current, expected in (
+            ([], self.root, f'cd -- "{self.root}"\ncodex resume "session-1" \\\n  -C "{self.root}"'),
+            ([first], first, f'cd -- "{self.root}"\ncodex resume "session-1" \\\n  -C "{first}" \\\n  --add-dir "{self.root}"'),
+            ([first, second], second, f'cd -- "{self.root}"\ncodex resume "session-1" \\\n  -C "{second}" \\\n  --add-dir "{self.root}" \\\n  --add-dir "{first}"'),
         ):
             with self.subTest(directories=directories):
-                output = resume.render_command(self.root, "session-1", directories)
+                output = resume.render_command(self.root, "session-1", directories, current)
                 self.assertEqual(output, expected)
                 self.assertNotIn("--last", output)
 
@@ -378,22 +378,31 @@ class ResumeCommandTests(unittest.TestCase):
         added = self.root / 'added"$`\\end'
         primary.mkdir()
         added.mkdir()
-        output = resume.render_command(primary, 'session"$`\\end', [added])
+        output = resume.render_command(primary, 'session"$`\\end', [added], added)
         self.assertEqual(
             output,
             f'cd -- "{self.root}/primary' + r'\"\$\`\\end"' + '\n'
             + r'codex resume "session\"\$\`\\end"' + ' \\\n'
-            + f'  --add-dir "{self.root}/added' + r'\"\$\`\\end"',
+            + f'  -C "{self.root}/added' + r'\"\$\`\\end"' + ' \\\n'
+            + f'  --add-dir "{self.root}/primary' + r'\"\$\`\\end"',
         )
 
     def test_render_rejects_newline_and_carriage_return_in_paths(self):
         for character in ("\n", "\r"):
             bad = self.root / f"bad{character}directory"
             bad.mkdir()
-            for primary, added in ((bad, []), (self.root, [bad])):
+            for primary, added, current in ((bad, [], bad), (self.root, [bad], bad)):
                 with self.subTest(primary=primary, added=added):
                     with self.assertRaises(resume.ResumeError):
-                        resume.render_command(primary, "session-1", added)
+                        resume.render_command(primary, "session-1", added, current)
+
+    def test_render_requires_current_directory_to_be_primary_or_selected(self):
+        selected = self.root / "selected"
+        unrelated = self.root / "unrelated"
+        selected.mkdir()
+        unrelated.mkdir()
+        with self.assertRaises(resume.ResumeError):
+            resume.render_command(self.root, "session-1", [selected], unrelated)
 
     def test_render_requires_existing_absolute_primary_directory(self):
         file_path = self.root / "file"
@@ -401,15 +410,15 @@ class ResumeCommandTests(unittest.TestCase):
         for primary in (Path("."), self.root / "missing", file_path):
             with self.subTest(primary=primary):
                 with self.assertRaises(resume.ResumeError):
-                    resume.render_command(primary, "session-1", [])
+                    resume.render_command(primary, "session-1", [], self.root)
 
     def test_render_rejects_unsafe_session_ids(self):
         for session_id in ("", "--last", "session\nnext", "session\rnext", "session\0next"):
             with self.subTest(session_id=session_id):
                 with self.assertRaises(resume.ResumeError):
-                    resume.render_command(self.root, session_id, [])
+                    resume.render_command(self.root, session_id, [], self.root)
 
-    def invoke_main(self, thread_id="thread-1"):
+    def invoke_main(self, thread_id="thread-1", argv=None):
         stdout, stderr = io.StringIO(), io.StringIO()
         environment = {} if thread_id is None else {"CODEX_THREAD_ID": thread_id}
         with (
@@ -418,7 +427,7 @@ class ResumeCommandTests(unittest.TestCase):
             redirect_stdout(stdout),
             redirect_stderr(stderr),
         ):
-            status = resume.main()
+            status = resume.main(argv)
         return status, stdout.getvalue(), stderr.getvalue()
 
     def create_primary(self, cwd):
@@ -444,7 +453,7 @@ class ResumeCommandTests(unittest.TestCase):
 
         self.assertEqual(status, 0)
         self.assertEqual(stderr, "")
-        self.assertEqual(stdout, f'cd -- "{primary}"\ncodex resume "resume-1" \\\n  --add-dir "{added}"\n')
+        self.assertEqual(stdout, f'cd -- "{primary}"\ncodex resume "resume-1" \\\n  -C "{added}" \\\n  --add-dir "{primary}"\n')
 
     def test_main_requires_selection_when_multiple_history_candidates_exist(self):
         primary = self.root / "primary"
@@ -467,6 +476,56 @@ class ResumeCommandTests(unittest.TestCase):
         self.assertNotEqual(status, 0)
         self.assertEqual(stdout, "")
         self.assertIn("--list-candidates", stderr)
+
+    def test_main_uses_explicit_current_from_multiple_selected_candidates(self):
+        primary = self.root / "primary"
+        first = self.root / "first"
+        second = self.root / "second"
+        for directory in (primary, first, second):
+            directory.mkdir()
+        session = self.create_primary(str(primary))
+        with session.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps({"payload": {"item": {
+                "type": "custom_tool_call", "name": "exec",
+                "input": (
+                    f"tools.exec_command({json.dumps({'workdir': str(first)})}); "
+                    f"tools.exec_command({json.dumps({'workdir': str(second)})})"
+                ),
+            }}}) + "\n")
+
+        status, stdout, stderr = self.invoke_main(argv=["--include", "1,2", "--current", "2"])
+
+        self.assertEqual(status, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(
+            stdout,
+            f'cd -- "{primary}"\ncodex resume "resume-1" \\\n'
+            f'  -C "{second}" \\\n'
+            f'  --add-dir "{primary}" \\\n'
+            f'  --add-dir "{first}"\n',
+        )
+
+    def test_main_rejects_current_directory_not_included(self):
+        primary = self.root / "primary"
+        first = self.root / "first"
+        second = self.root / "second"
+        for directory in (primary, first, second):
+            directory.mkdir()
+        session = self.create_primary(str(primary))
+        with session.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps({"payload": {"item": {
+                "type": "custom_tool_call", "name": "exec",
+                "input": (
+                    f"tools.exec_command({json.dumps({'workdir': str(first)})}); "
+                    f"tools.exec_command({json.dumps({'workdir': str(second)})})"
+                ),
+            }}}) + "\n")
+
+        status, stdout, stderr = self.invoke_main(argv=["--include", "1", "--current", "2"])
+
+        self.assertNotEqual(status, 0)
+        self.assertEqual(stdout, "")
+        self.assertIn("--current must name one directory selected by --include", stderr)
 
     def test_main_requires_thread_id(self):
         status, stdout, stderr = self.invoke_main(thread_id=None)
