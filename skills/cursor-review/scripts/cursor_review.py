@@ -20,6 +20,11 @@ def capabilities():
     return {"workspace_exploration": True, "write_tools": False}
 
 
+def effort_parameter_id(model):
+    """Map model families to the parameter name published by Cursor's catalog."""
+    return 'reasoning_effort' if model == 'grok-4.7' else 'effort'
+
+
 def emit_error(code, message):
     print(message, file=sys.stderr, flush=True)
     print(ERROR_BEGIN, file=sys.stderr, flush=True)
@@ -167,7 +172,9 @@ def run_review(args, api_key):
     except ImportError:
         emit_error('SDK_UNAVAILABLE', 'INCOMPLETE: Cursor SDK is unavailable in the review runtime.')
         return 2
-    model = ModelSelection(id=args.model, params=[ModelParameterValue(id='effort', value=args.effort)])
+    model = ModelSelection(id=args.model, params=[
+        ModelParameterValue(id=effort_parameter_id(args.model), value=args.effort)
+    ])
     calls = []
     call_lock = threading.Lock()
     call_count = 0
@@ -241,7 +248,7 @@ def main():
     parser.add_argument('--check-capabilities', action='store_true')
     parser.add_argument('--check', action='store_true')
     parser.add_argument('--api-key-file', default=DEFAULT_API_KEY_FILE)
-    parser.add_argument('--model', default='grok-4.6')
+    parser.add_argument('--model', default='grok-4.7')
     parser.add_argument('--effort', default='high')
     parser.add_argument('--timeout-seconds', type=int, default=960)
     parser.add_argument('--poll-seconds', type=float, default=10)

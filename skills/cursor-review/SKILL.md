@@ -25,7 +25,7 @@ python /path/to/cursor-review/scripts/cursor_review.py \
   --expected-request-digest "$BOUND_REQUEST_DIGEST"
 ```
 
-Defaults: grok-4.6/high, 960 seconds. The pinned adapter executes through isolated Python. --check-capabilities returns exactly {"workspace_exploration":true,"write_tools":false}. Cursor SDK receives only the filtered frozen view as cwd, plan mode and bounded list_files/read_file/search custom tools; built-in filesystem tools are disabled. No shell, write, MCP, URL-fetch or original-worktree access is offered. This is a deliberate frozen-workspace policy, not a claim that SDK indexing is disabled.
+Defaults: grok-4.7/high (`reasoning_effort=high`), 960 seconds. The pinned adapter executes through isolated Python. --check-capabilities returns exactly {"workspace_exploration":true,"write_tools":false}. Cursor SDK receives only the filtered frozen view as cwd, plan mode and bounded list_files/read_file/search custom tools; built-in filesystem tools are disabled. No shell, write, MCP, URL-fetch or original-worktree access is offered. This is a deliberate frozen-workspace policy, not a claim that SDK indexing is disabled.
 
 Reviewer never writes the worktree, even a review-result document. Return only stdout/API. After receipt the controller verifies original HEAD/index/files/modes and private input digests before saving the result; unexpected changes reject the report without automatic rollback. Freeze by digest, never automatically commit. Package cleanup runs in finally and a failed cleanup cannot become success.
 

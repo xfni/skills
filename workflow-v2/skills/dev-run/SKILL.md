@@ -95,6 +95,8 @@ Apply the Test infrastructure permission section of `../../flow-contract.md`. Pr
 
 Read and enforce [the frozen worktree review contract](../../review-contract.md). Review the complete filtered frozen worktree with independent exploration of source, tests and secrets exclusions; the root brief is not sole evidence. iBrain is organization-trusted; no external-review authorization gate. Reviewer returns stdout/API only and never writes worktree. Freeze by digest (no automatic commit); source/private snapshot verification and single-use package binding are controller-owned.
 
+Temporary local routing policy: use Cursor as the only external-review backend. Do not select, invoke, retry, or fall back to iBrain, including when Cursor is unavailable or retries are exhausted. Keep the iBrain adapter and controller commands intact for later re-enablement. When Cursor cannot complete, record the external lane as unavailable and continue through the existing degraded-review path.
+
 ## Authorization Forecast and preflight
 
 Do not wait for Code or Integration to discover every foreseeable authority gap. During Requirement discovery, use targeted read-only inspection of relevant source, configuration precedence, launch scripts and runbooks to prepare one `Authorization Forecast`. Present it inside the existing final Requirement Decision Brief and confirmation, not as another gate. A Direct/raw bootstrap prepares the same forecast in its binding charter before unattended downstream execution.

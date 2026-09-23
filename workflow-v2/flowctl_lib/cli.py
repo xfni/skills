@@ -94,7 +94,7 @@ def _parser():
     cursor.add_argument("--artifact-key", required=True)
     cursor.add_argument("--prompt", required=True)
     cursor.add_argument("--runner", required=True)
-    cursor.add_argument("--model", default="grok-4.6")
+    cursor.add_argument("--model", default="grok-4.7")
     cursor.add_argument("--effort", default="high")
     cursor.add_argument("--timeout-seconds", type=int, default=960)
     cursor.add_argument("--expected-revision", required=True, type=int)

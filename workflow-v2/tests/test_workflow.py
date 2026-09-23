@@ -506,12 +506,18 @@ class WorkflowV2Tests(unittest.TestCase):
             "must not claim integration coverage", "$dev-integration",
         ):
             self.assertIn(value, text)
+        self.assertIn("`gpt-6-sol`/`high`", text)
+        self.assertIn("`gpt-6-astra`/`medium`", text)
+
+        plan = self.skill("dev-plan")
+        self.assertIn("`gpt-6-sol` with `high` effort", plan)
+        self.assertIn("`gpt-6-astra` with `medium` effort", plan)
 
     def test_flow_code_uses_one_lazy_session_scoped_luna_coder(self):
         text = self.skill("dev-code")
         for value in (
             "dev_coder",
-            "gpt-5.6-luna",
+            "gpt-6-luna",
             "max",
             "only after the Plan handoff passes admission",
             "must not spawn it at session start",
@@ -545,7 +551,7 @@ class WorkflowV2Tests(unittest.TestCase):
         config = agent.read_text()
         for value in (
             'name = "dev_coder"',
-            'model = "gpt-5.6-luna"',
+            'model = "gpt-6-luna"',
             'model_reasoning_effort = "max"',
             "Do not delegate",
             "Implement only the assigned TASK-*",

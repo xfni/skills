@@ -227,6 +227,10 @@ class ReviewPackageTests(unittest.TestCase):
 
 
 class ReviewRunnerTests(unittest.TestCase):
+    def test_cursor_grok_47_uses_reasoning_effort_parameter(self):
+        module = self.load_runner('cursor')
+        self.assertEqual('reasoning_effort', module.effort_parameter_id('grok-4.7'))
+
     def test_review_round1_replaced_request_is_never_sent(self):
         module = self.load_runner('ibrain')
         with tempfile.TemporaryDirectory() as tmp:
