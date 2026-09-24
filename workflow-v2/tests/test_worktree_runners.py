@@ -71,17 +71,24 @@ class WorktreeRunnerTests(unittest.TestCase):
             def __init__(self, **kwargs):
                 self.__dict__.update(kwargs)
         options = []
+        run_options = []
         agent = SimpleNamespace(send=lambda *args: SimpleNamespace(id='run-1'), agent_id='agent-1')
         client = SimpleNamespace(agents=SimpleNamespace(
             create=lambda value: options.append(value) or agent,
-            get_run=lambda _: SimpleNamespace(status='finished',result=json.dumps(self.report))))
+            get_run=lambda _, value=None: run_options.append(value) or SimpleNamespace(
+                status='finished', result=json.dumps(self.report))))
         class Bridge:
             def __enter__(self): return client
             def __exit__(self, *args): pass
+        launch = {}
+        def launch_bridge(**kwargs):
+            launch.update(kwargs)
+            self.assertTrue(Path(kwargs['state_root']).is_dir())
+            return Bridge()
         sdk = SimpleNamespace(AgentOptions=Options, LocalAgentOptions=Options,
             CustomTool=Options,
             ModelSelection=Options, ModelParameterValue=Options, SendOptions=Options,
-            Client=SimpleNamespace(launch_bridge=lambda **kwargs: Bridge()))
+            Client=SimpleNamespace(launch_bridge=launch_bridge))
         stdout = io.StringIO()
         with patch.dict(sys.modules, {'cursor_sdk':sdk}), contextlib.redirect_stdout(stdout):
             self.assertEqual(0, runner.run_review(self.args, 'private-key'))
@@ -92,7 +99,21 @@ class WorktreeRunnerTests(unittest.TestCase):
         self.assertIn('answer = 42', json.dumps(read.execute({'path':'caller.py'})))
         self.assertEqual({'error':'READ_ONLY_SCOPE_REJECTED'}, read.execute({'path':'../request.json'}))
         self.assertEqual('plan', options[0].mode)
+        self.assertEqual(str(self.workspace), launch['workspace'])
+        self.assertIs(options[0].local, launch['local'])
+        self.assertEqual('jsonl', options[0].local.store['type'])
+        self.assertTrue(options[0].local.store['root_dir'].startswith(launch['state_root']))
+        self.assertEqual([{'runtime':'local'}], run_options)
+        self.assertFalse(Path(launch['state_root']).exists())
         self.assertEqual(1, stdout.getvalue().count('FLOW_REVIEW_REPORT_BEGIN'))
+
+    def test_cursor_normalizes_one_json_report_with_model_preamble(self):
+        runner = self.load('cursor')
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            self.assertTrue(runner.emit_report('I inspected the workspace.\n' + json.dumps(self.report)))
+        framed = stdout.getvalue().split(runner.REPORT_BEGIN, 1)[1].split(runner.REPORT_END, 1)[0].strip()
+        self.assertEqual(self.report, json.loads(framed))
 
     def test_real_cursor_sdk_wire_disables_builtins_and_registers_custom_tools(self):
         try:
@@ -104,7 +125,8 @@ class WorktreeRunnerTests(unittest.TestCase):
         agent = SimpleNamespace(send=lambda *args: SimpleNamespace(id='run-1'))
         client = SimpleNamespace(agents=SimpleNamespace(
             create=lambda value: options.append(value) or agent,
-            get_run=lambda _: SimpleNamespace(status='finished', result=json.dumps(self.report))))
+            get_run=lambda _, options=None: SimpleNamespace(
+                status='finished', result=json.dumps(self.report))))
         class Bridge:
             def __enter__(self): return client
             def __exit__(self, *args): pass

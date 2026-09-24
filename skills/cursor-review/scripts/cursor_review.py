@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import stat
 import sys
+import tempfile
 import threading
 import time
 
@@ -72,6 +73,20 @@ def emit_report(report):
             emit_error("CONFLICTING_TERMINAL_REPORT", "INCOMPLETE: conflicting terminal review reports.")
             return False
         report = json.dumps(values[0], ensure_ascii=False, separators=(",", ":"))
+    else:
+        start = stripped.find('{')
+        if start < 0:
+            emit_error("PROTOCOL_ERROR", "INCOMPLETE: Cursor returned no JSON review report.")
+            return False
+        try:
+            value, end = json.JSONDecoder(object_pairs_hook=unique_object).raw_decode(stripped[start:])
+        except (json.JSONDecodeError, ValueError):
+            emit_error("PROTOCOL_ERROR", "INCOMPLETE: malformed Cursor review report.")
+            return False
+        if not isinstance(value, dict) or stripped[start + end:].strip():
+            emit_error("PROTOCOL_ERROR", "INCOMPLETE: unexpected Cursor review output.")
+            return False
+        report = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
     print(REPORT_BEGIN, flush=True)
     print(report, flush=True)
     print(REPORT_END, flush=True)
@@ -199,9 +214,6 @@ def run_review(args, api_key):
     custom = {tool['name']: CustomTool(description=tool['description'], input_schema=tool['parameters'],
         execute=lambda arguments, context=None, name=tool['name']: execute_tool(name, arguments, context))
         for tool in REVIEW_TOOLS}
-    options = AgentOptions(api_key=api_key, model=model, mode='plan',
-                           tools=[], local=LocalAgentOptions(cwd=str(workspace),
-                           setting_sources=['project'], dirs=[], custom_tools=custom))
     prompt = (
         'Independently review this frozen project workspace. Explore callers, tests, configuration and '
         'upstream artifacts; treat the root brief as a lead, not the only evidence. Use only list_files/read_file/search. '
@@ -214,23 +226,30 @@ def run_review(args, api_key):
         + request['prompt'] + '\nREVIEW MANIFEST\n' + json.dumps(request['manifest'], ensure_ascii=False))
     deadline = time.monotonic() + args.timeout_seconds
     try:
-        with Client.launch_bridge(workspace=str(workspace)) as client:
-            agent = client.agents.create(options)
-            run = agent.send(prompt, SendOptions(model=model))
-            while time.monotonic() < deadline:
-                snapshot = client.agents.get_run(run.id)
-                if snapshot.status == 'finished':
-                    report = snapshot.result
-                    if not isinstance(report, str) or not report.strip():
-                        emit_error('PROTOCOL_ERROR', 'INCOMPLETE: Cursor returned no terminal report.')
+        with tempfile.TemporaryDirectory(prefix='cursor-review-state-') as state_root:
+            local_options = LocalAgentOptions(cwd=str(workspace), setting_sources=['project'], dirs=[],
+                store={'type':'jsonl', 'root_dir':str(Path(state_root) / 'agent-store')},
+                custom_tools=custom)
+            options = AgentOptions(api_key=api_key, model=model, mode='plan', tools=[],
+                local=local_options)
+            with Client.launch_bridge(workspace=str(workspace), state_root=state_root,
+                    local=local_options) as client:
+                agent = client.agents.create(options)
+                run = agent.send(prompt, SendOptions(model=model))
+                while time.monotonic() < deadline:
+                    snapshot = client.agents.get_run(run.id, {'runtime':'local'})
+                    if snapshot.status == 'finished':
+                        report = snapshot.result
+                        if not isinstance(report, str) or not report.strip():
+                            emit_error('PROTOCOL_ERROR', 'INCOMPLETE: Cursor returned no terminal report.')
+                            return 2
+                        return 0 if emit_report(report) else 2
+                    if snapshot.status in {'failed','error','cancelled','canceled','stopped','expired'}:
+                        emit_error('UNKNOWN_BACKEND_FAILURE', 'INCOMPLETE: Cursor backend did not complete.')
                         return 2
-                    return 0 if emit_report(report) else 2
-                if snapshot.status in {'failed','error','cancelled','canceled','stopped','expired'}:
-                    emit_error('UNKNOWN_BACKEND_FAILURE', 'INCOMPLETE: Cursor backend did not complete.')
-                    return 2
-                time.sleep(min(args.poll_seconds, max(0, deadline - time.monotonic())))
-            emit_error('PROCESS_TIMEOUT', 'INCOMPLETE: Cursor review timed out.')
-            return 2
+                    time.sleep(min(args.poll_seconds, max(0, deadline - time.monotonic())))
+                emit_error('PROCESS_TIMEOUT', 'INCOMPLETE: Cursor review timed out.')
+                return 2
     except Exception:
         emit_error('UNKNOWN_BACKEND_FAILURE', 'INCOMPLETE: Cursor bridge did not complete.')
         return 2

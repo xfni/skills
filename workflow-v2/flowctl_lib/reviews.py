@@ -37,6 +37,7 @@ TRUSTED_ADAPTER_DIGESTS = {
     'cursor': frozenset({
         '172131cafcc03f17450a7dd098d3e1a13b8b6105ee9288144cc5f32f47b26c5a',
         'd1259132b9078728a1b8eba7908ce52404d2652d9cf7b9b8bf637e3ab074044a',
+        'e684255d1a10223cee89436c11a3a89493082accc1281149903b08b95ba9d16b',
     }),
     'ibrain': frozenset({'1f6b9c10035cb7a773407dac05f3024403da10f6d8a1fc19d31e0d854d987175'}),
 }
