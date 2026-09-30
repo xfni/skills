@@ -506,11 +506,11 @@ class WorkflowV2Tests(unittest.TestCase):
             "must not claim integration coverage", "$dev-integration",
         ):
             self.assertIn(value, text)
-        self.assertIn("`gpt-6-sol`/`high`", text)
+        self.assertIn("`gpt-6.1-sol`/`high`", text)
         self.assertIn("`gpt-6-astra`/`medium`", text)
 
         plan = self.skill("dev-plan")
-        self.assertIn("`gpt-6-sol` with `high` effort", plan)
+        self.assertIn("`gpt-6.1-sol` with `high` effort", plan)
         self.assertIn("`gpt-6-astra` with `medium` effort", plan)
 
     def test_flow_code_uses_one_lazy_session_scoped_luna_coder(self):

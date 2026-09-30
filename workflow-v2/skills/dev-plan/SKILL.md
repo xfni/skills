@@ -89,7 +89,7 @@ Apply Minimum independent guarantee and degradation in `../../review-contract.md
 
 Resolve the output path through the artifact contract with flow_step `plan`. Include source snapshot tuples, a dependency graph, allowed change surface, validation matrix, rollback strategy, deferred work, and traceability from every Spec rule and acceptance criterion to at least one task and verification command.
 
-Run independent lanes against the exact Plan revision/digest. In the GPT Lane, the root agent chooses and records one difficulty-based pair: `gpt-6-sol` with `high` effort for bounded plans, or `gpt-6-astra` with `medium` effort for complex dependencies, migrations, concurrency, security, compatibility, cross-system work, or substantial ambiguity. The selected GPT owns and rechecks its findings until pass or the controller limit.
+Run independent lanes against the exact Plan revision/digest. In the GPT Lane, the root agent chooses and records one difficulty-based pair: `gpt-6.1-sol` with `high` effort for bounded plans, or `gpt-6-astra` with `medium` effort for complex dependencies, migrations, concurrency, security, compatibility, cross-system work, or substantial ambiguity. The selected GPT owns and rechecks its findings until pass or the controller limit.
 
 Apply independent-review's evidence audit and finding-weight convergence. A non-blocking finding must not trigger another review cycle; consolidate the same recurrence_key, and after three review cycles with the same unresolved blocker route to its owning stage or `BLOCKED_REVIEW` rather than continuing the reviewer loop.
 

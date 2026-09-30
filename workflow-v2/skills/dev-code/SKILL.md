@@ -109,7 +109,7 @@ Do not weaken tests, change Spec to match code, add speculative infrastructure, 
 
 Apply Minimum independent guarantee and degradation in `../../review-contract.md`. Prefer GPT + external independent chains; actual unavailability or an explicit human constraint permits one effective chain with a recorded gap. Sol/high and Astra/medium may substitute on unavailability. The original reviewer normally rechecks its findings; an available independent takeover reviewer must receive and explicitly resolve them. No mandatory third consistency review.
 
-After milestone validation, freeze the snapshot and run independent lanes. In the GPT Lane, the root agent chooses by requirement difficulty: `gpt-6-sol`/`high` for bounded work or `gpt-6-astra`/`medium` for complex or high-risk work. The selected GPT owns and rechecks its findings; accepted fixes return to the same coder and then the same GPT reviewer.
+After milestone validation, freeze the snapshot and run independent lanes. In the GPT Lane, the root agent chooses by requirement difficulty: `gpt-6.1-sol`/`high` for bounded work or `gpt-6-astra`/`medium` for complex or high-risk work. The selected GPT owns and rechecks its findings; accepted fixes return to the same coder and then the same GPT reviewer.
 
 Apply independent-review's evidence audit and finding-weight convergence. A non-blocking finding must not trigger another review cycle; consolidate the same recurrence_key, and after three review cycles with the same unresolved blocker return to the owning stage or end `BLOCKED_REVIEW` rather than continuing the reviewer loop.
 
